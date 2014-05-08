@@ -79,16 +79,16 @@ program cube
     call setup_kernels
     call initial_conditions
 
-    do it = 1, timesteps
+    do it = 1, 1 !timesteps
 
-        call calculate_rho
-        call poisson_solve
-        call update_particles
-        call send_particles
+        call calculate_rho !G3
+        call poisson_solve !G1
+        call update_particles !G2
+        call send_particles !G2
 
     enddo
 
-    call dump_particles
+    call dump_particles !G3
 
     ! ----------------------------------------------------------------------------------------------------
     ! SUBROUTINES
@@ -109,7 +109,7 @@ contains
 
     ! ----------------------------------------------------------------------------------------------------
 
-    subroutine initial_conditions
+    subroutine initial_conditions ! Group 3
         !
         ! Initialize particles to start with random positions within the range [0, ngrid*ncube] and with
         ! zero velocity.
@@ -148,7 +148,7 @@ contains
         !
 
         rho3 = rhol
-        call pencilfftforward
+        call pencilfftforward !G1; transpose stuff
         crhoztmp = crhoz
 
         !
@@ -226,6 +226,53 @@ contains
         !
 
         implicit none
+
+        ! given x,v for each particle (initial conditions)
+        
+        ! real, dimension(6, npmax) :: xv[ncube, ncube, *]
+        
+        ! from x determine the subcube of each particle
+        ! also given F for each subcube     
+        
+        ! real, dimension(3, ngrid, ngrid, ngrid) :: force3
+        
+        ! update v and then x for each particle
+        
+!        for i=0, num_images()
+     
+        if (this_image() == 1) then
+           write(*,*) shape(xv)
+        endif
+
+        do i = 1, npnode
+           x = xv(1,i)
+           y = xv(2,i)
+           z = xv(3,i)
+
+           x = mod(floor(x),ngrid)
+           if (x .eq. 0) then 
+              x = ncube
+           end if
+
+            y = mod(floor(y),ngrid)
+           if (y .eq. 0) then 
+              y = ncube
+           end if
+
+            z = mod(floor(z),ngrid)
+           if (z .eq. 0) then 
+              z = ncube
+           end if
+
+           xv(4,i) = xv(4,i) + force3(1,x,y,z)
+           xv(1,i) = xv(1,i) + xv(4,i)
+
+           xv(5,i) = xv(5,i) + force3(2, x,y,z)
+           xv(2,i) = xv(2,i) + xv(5,i)
+
+           xv(6,i) = xv(6,i) + force3(3, x,y,z)
+           xv(3,i) = xv(3,i) + xv(6,i)
+        enddo
 
     end subroutine update_particles
 
