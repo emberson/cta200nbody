@@ -116,18 +116,18 @@ contains
         !
 
         implicit none
-	integer :: l
+	integer :: j, l
 	
-	! Comment here.
-	do l=1, npmax
-	  xv(1, l) = 0.5
-	  xv(2, l) = 0.6
-	  xv(3, l) = 0.7
-	  xv(4, l) = 0
-	  xv(5, l) = 0
-	  xv(6, l) = 0
-	enddo
-	write(*,*) xv
+	xv = 0
+	
+	
+	! All nodes iterate over the particles they contain and initialize random positions and 0 velocity.
+	do l=1, npnode
+		 do j=1,3
+			xv(j,l) = (2*Rand)+(2*(mycoord(j)-1))
+			enddo	
+
+	 enddo
 
     end subroutine initial_conditions
 
@@ -138,7 +138,21 @@ contains
         ! Interpolate particles onto the mesh and accumulate their density normalized to the mean density.
         !
 
+
         implicit none
+
+	! Make empty array for the mesh co ordinates
+	integer mesh_coord(3)
+
+	! Change the co ordinates to be in terms of the mesh
+	do l=1, npnode
+		do j=1,3
+		mesh_coord(j) = xv(j,l)-(2*(mycoord(j)-1))
+	
+
+
+rho = npmesh/np
+integer,parameter :: nmesh = 
 
     end subroutine calculate_rho
 
