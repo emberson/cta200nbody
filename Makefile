@@ -1,8 +1,11 @@
 FC=ifort
-FFLAGS=-coarray
+FFLAGS=-fpp -mkl -coarray -coarray-num-images=8 -DDEBUG
 
-cube.x: cube.f90
-	$(FC) $(FFLAGS) -coarray-num-images=8 $< -o $@
+cube.x: cube.f90 mkl_fftvec.o
+	$(FC) $(FFLAGS) cube.f90 mkl_fftvec.o -o $@
+
+mkl_fftvec.o: mkl_fftvec.f90
+	$(FC) -fpp -c $<
 
 clean:
 	rm -f *.o *.x
