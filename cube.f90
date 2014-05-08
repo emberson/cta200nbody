@@ -1,6 +1,6 @@
 ! ----------------------------------------------------------------------------------------------------
 ! cube.f90: Parallel N-body code written May 2014 by CTA200 students.
-! Compile with 
+! Compile with ifort -fpp -c mkl_fftvec.f90 ; ifort -fpp -mkl -coarray -coarray-num-images=8 cube.f90 mkl_fftvec.o -o cube.x 
 ! ----------------------------------------------------------------------------------------------------
 
 program cube
