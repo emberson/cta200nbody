@@ -236,6 +236,37 @@ contains
         ! Send all particles that have moved out of each node's physical volume to the appropriate neighbouring node.
         !
 
+        integer :: i, X_new, Y_new, Z_new
+        real :: x, y, z, L
+
+        iout = 0
+        i = 1
+
+        L = ngrid * ncube
+
+        do while (i .le. npnode)
+           x = mod(xv(1,i), L)
+           y = mod(xv(2,i), L)
+           z = mod(xv(3,i), L)
+
+           X_new = 1 + (floor(x)/ngrid)
+           Y_new = 1 + (floor(y)/ngrid)
+           Z_new = 1 + (floor(z)/ngrid)
+
+           if ( (X_new .eq. myCoord(1)).and.(Y_new .eq. myCoord(2)).and.(Z_new .eq. myCoord(3)) ) then
+              i = i + 1
+           else
+              write (*,*) this_image(), '#', i, 'from (',myCoord(1), ',', myCoord(2), ',', myCoord(3), ')'
+              write (*,*) this_image(), '***    moved to(',X_new, ',', Y_new, ',', Z_new, ')'
+
+              npnode[X_new, Y_new, Z_new] = npnode[X_new, Y_new, Z_new] + 1
+              xv(:,npnode[X_new, Y_new, Z_new])[X_new, Y_new, Z_new] = xv(:,i)
+              xv(:,i) = xv(:,npnode)
+              npnode = npnode - 1
+              iout = iout + 1
+           end if
+         end do
+      
       
         implicit none
 
