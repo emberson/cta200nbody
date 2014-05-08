@@ -125,7 +125,7 @@ contains
         !
         ! Interpolate particles onto the mesh and accumulate their density normalized to the mean density.
         !
-
+        
         implicit none
 
     end subroutine calculate_rho
@@ -148,6 +148,19 @@ contains
         !
 
         rho3 = rhol
+        
+        !
+        ! Initialize rho3
+        !
+
+        do i=1,2
+           do j=1,2
+              do k=1,2
+                 rho3[i,1,j,1,k]=i+j-k
+              enddo
+           enddo
+        enddo
+
         call pencilfftforward
         crhoztmp = crhoz
 
@@ -181,6 +194,7 @@ contains
         !
 
         !! DO SOME THINGS HERE TO GO FROM RHO3 TO RHOX
+        !extra comments
 
         call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
 
