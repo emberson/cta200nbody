@@ -116,6 +116,18 @@ contains
         !
 
         implicit none
+	integer :: l
+	
+	! Comment here.
+	do l=1, npmax
+	  xv(1, l) = 0.5
+	  xv(2, l) = 0.6
+	  xv(3, l) = 0.7
+	  xv(4, l) = 0
+	  xv(5, l) = 0
+	  xv(6, l) = 0
+	enddo
+	write(*,*) xv
 
     end subroutine initial_conditions
 
