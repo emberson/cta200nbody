@@ -246,6 +246,24 @@ contains
 
         crhox = cmplx(rhox(::2,:,:,:), rhox(2::2,:,:,:))
 
+        ix =  mycoord(3)
+        ixlen = ngrid/2
+        if (ix .eq. ncube) ixlen = ixlen + 1  !! Nyquist frequency (top row in z mapped to far x end here)
+        crhoy = 0.
+
+        do iy0 = 1, ncube
+            iy = mod(iy0+ix, ncube) + 1
+            ixr[iy,mycoord(1),mycoord(2)]=ix
+            sync all
+            crhotmpyxglobal= !!
+            sync all
+            crhotmpyx= !! 
+            do i=1,ixlen
+                crhoy(:,:,iy,:,i)=crhotmpyx(i,:,:,:)
+            enddo
+        enddo
+
+
         !! DO SOME THINGS HERE TO GO FROM CRHOX -> CRHOY
 
         call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
