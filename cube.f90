@@ -298,47 +298,46 @@ contains
         !
         ! Send all particles that have moved out of each node's physical volume to the appropriate neighbouring node.
         !
+     
+        implicit none
 
       implicit none
 
         integer :: i, X_new, Y_new, Z_new
         real :: x, y, z, L
 
-        iout = 0
-        i = 1
+        iout = 0 !number of particles that have left the subcube
+        i = 1 !particle index
 
-        L = ngrid * ncube
+        L = ngrid * ncube !total size of cube
 
-        do while (i .le. npnode)
-           x = mod(xv(1,i), L)
-           y = mod(xv(2,i), L)
-           z = mod(xv(3,i), L)
-
-           xv(1,i) = x
+        do while (i .le. npnode) !check ith particle
+           x = mod(xv(1,i), L) !find updated coordinates normalized to the cube
+           y = mod(xv(2,i), L) 
+           z = mod(xv(3,i), L) 
+           
+           xv(1,i) = x !reassign to updated coordinates
            xv(2,i) = y
            xv(3,i) = z
-           
 
-           X_new = 1 + (floor(x)/ngrid)
+           X_new = 1 + (floor(x)/ngrid) !determine new subcube location
            Y_new = 1 + (floor(y)/ngrid)
            Z_new = 1 + (floor(z)/ngrid)
 
            if ( (X_new .eq. myCoord(1)).and.(Y_new .eq. myCoord(2)).and.(Z_new .eq. myCoord(3)) ) then
-              i = i + 1
-           else
-              if (this_image() == 1) then 
-                 write (*,*) this_image(), '#', i, 'from (',myCoord(1), ',', myCoord(2), ',', myCoord(3), ')'
-                 write (*,*) this_image(), '***    moved to(',X_new, ',', Y_new, ',', Z_new, ')'
-              end if
-              npnode[X_new, Y_new, Z_new] = npnode[X_new, Y_new, Z_new] + 1
-              xv(:,npnode[X_new, Y_new, Z_new])[X_new, Y_new, Z_new] = xv(:,i)
-              xv(:,i) = xv(:,npnode)
-              npnode = npnode - 1
-              iout = iout + 1
+                i = i + 1 !if particle is in same subcube, check next particle
+           else !if particle is not in same subcube
+              write (*,*) this_image(), '#', i, 'from (',myCoord(1), ',', myCoord(2), ',', myCoord(3), ')'
+              write (*,*) this_image(), '***    moved to(',X_new, ',', Y_new, ',', Z_new, ')'
+
+              npnode[X_new, Y_new, Z_new] = npnode[X_new, Y_new, Z_new] + 1 !add the particle at its new subcube location
+              xv(:,npnode[X_new, Y_new, Z_new])[X_new, Y_new, Z_new] = xv(:,i) !add particles coordinates at its new subcube location
+              xv(:,i) = xv(:,npnode) !remove particle coordinates from old subcube
+              npnode = npnode - 1 !remove particle from old subcube
+              iout = iout + 1 !add leaving particle to count
            end if
          end do
-      
-      
+
     end subroutine send_particles
 
     ! ----------------------------------------------------------------------------------------------------
