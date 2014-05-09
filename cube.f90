@@ -105,7 +105,62 @@ contains
     
         implicit none
 
+        integer :: i, j, k, idim
+        real :: r2, dr3(3)
+
+        do idim = 1, 3
+            do k = 1, ngrid
+                do j = 1, ngrid
+                    do i = 1, ngrid
+                        dr3 = delta_r(index_global((/i, j, k/)))
+                        r2  = sum(dr3**2)
+                        if (r2 < 0.5) then
+                            rho(i, j, k) = 0.
+                            cycle
+                        end if
+                        rho(i, j, k) = -0.1 * dr3(idim) / r2**1.5
+                   enddo
+                enddo
+            enddo
+
+            rho3 = rhol
+            call pencilfftforward
+            cforce3(:,:,:,:,:,idim) = crhoz
+
+        enddo
+
     end subroutine setup_kernels
+
+    function index_global(index_local)
+        !
+        ! Takes local mesh coordinates and transforms them to global mesh coordinates.
+        !
+
+        implicit none
+
+        integer :: index_local(3), index_global(3)
+
+        !! THIS NEEDS TO BE CHANGED:
+        index_global = 0
+
+    end function index_global
+
+    function delta_r(index_global)
+        !
+        ! Takes global mesh coordinates as an input and maps this to delta_r based on the following: 
+        !   * Each dimension of index_global ranges from [1, ngrid*ncube] and this is linearly mapped onto
+        !     delta_r with range [0, 1, ..., ngrid*ncube/2 -1, 1.e10, -ngrid*ncube/2 + 1, ..., -2, -1]. 
+        !
+
+        implicit none
+
+        integer :: index_global(3)
+        real delta_r(3)
+
+        !! THIS NEEDS TO BE CHANGED:
+        delta_r = 0
+
+    end function delta_r
 
     ! ----------------------------------------------------------------------------------------------------
 
