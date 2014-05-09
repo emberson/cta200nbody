@@ -54,6 +54,8 @@ program cube
     !! Image coordinates in the volume decomposition 
     integer mycoord(3)
 
+    !integer :: temp(3),test(3) !testing index_global
+
     ! ----------------------------------------------------------------------------------------------------
     ! MAIN
     ! ----------------------------------------------------------------------------------------------------
@@ -71,7 +73,11 @@ program cube
     endif
 
     !! Store cubic image coordinate
-    mycoord = this_image(xv)
+    myCoord = this_image(xv)
+
+    !temp = (/1,2,1/)
+    !test = index_global(temp)
+    !write(*,*) this_image(), 'testing',test
 
     !! Start with an equal number of particles on each node
     npnode = np/ncube**3 !number of particles in subcube
@@ -138,14 +144,16 @@ contains
 
         implicit none
 
-        integer :: index_local(3), index_global(3)
+        integer :: index_local(3), index_global(3),j,toglobal
+        
 
-        !! THIS NEEDS TO BE CHANGED:
-        index_global = 0
+        do j=1,3
+           index_global(j) =(mycoord(j)-1)*ngrid+index_local(j)
+        enddo
 
     end function index_global
 
-    function delta_r(index_global)
+    function delta_r(index_glob)
         !
         ! Takes global mesh coordinates as an input and maps this to delta_r based on the following: 
         !   * Each dimension of index_global ranges from [1, ngrid*ncube] and this is linearly mapped onto
@@ -154,11 +162,21 @@ contains
 
         implicit none
 
-        integer :: index_global(3)
+        integer :: index_glob(3)
         real delta_r(3)
 
-        !! THIS NEEDS TO BE CHANGED:
-        delta_r = 0
+        real :: L, dx, dy, dz
+
+        L = ngrid * ncube
+        dx = index_glob(1)
+        dy = index_glob(2)
+        dz = index_glob(3)
+        
+        if(dx .gt. (L - dx)) dx = dx - L
+        if(dy .gt. (L - dy)) dy = dy - L
+        if(dz .gt. (L - dz)) dz = dz - L
+
+        delta_r = (/dx,dy,dz/)
 
     end function delta_r
 
@@ -282,6 +300,8 @@ contains
 
         implicit none
 
+        integer :: i
+        real :: x,y,z
         ! given x,v for each particle (initial conditions)
         
         ! real, dimension(6, npmax) :: xv[ncube, ncube, *]
