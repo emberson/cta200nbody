@@ -185,7 +185,7 @@ contains
         ! Pencils have their longest axis in the x dimension and their shortest in z. Pencils
         ! are stacked along y first and then z.
         !
-
+        
         ! GO FROM RHO3 TO RHOX
         rhox = 0
         do i = 1,ncube
@@ -201,7 +201,12 @@ contains
 
         crhox = cmplx(rhox(::2,:,:,:), rhox(2::2,:,:,:))
 
-        !! DO SOME THINGS HERE TO GO FROM CRHOX -> CRHOY
+        ! GO FROM CRHOX -> CRHOY
+        do i = 1,ncube
+           do j = (mycoord(3)-1)*ngrid+1,ngrid*mycoord(3)
+              crhoy(:,:,i,:,j)=crhox(j,:,:,:)[i,mycoord(1),mycoord(2)]
+           enddo
+        enddo
 
         call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
