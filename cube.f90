@@ -116,19 +116,33 @@ contains
         !
 
         implicit none
-	integer :: j, l
+	integer :: j, l,n
+	integer, allocatable :: seed(:)
+	integer :: t
+	n=-3
 	
+	call system_clock(t)
 	xv = 0
+	call random_seed(size = n)
+            allocate(seed(n))
+	
+	
+                  seed(:) = t*this_image()
+        
+
+	call random_seed(put=seed)
 	
 	
 	! All nodes iterate over the particles they contain and initialize random positions and 0 velocity.
 	do l=1, npnode
+
+	call RANDOM_NUMBER (xv(1:3,l))
+	
 		 do j=1,3
-			xv(j,l) = (2*Rand)+(2*(mycoord(j)-1))
+			xv(j,l) = (ngrid*xv(j,l))+(ngrid*(mycoord(j)-1))
 			enddo	
 
 	 enddo
-
     end subroutine initial_conditions
 
     ! ----------------------------------------------------------------------------------------------------
@@ -142,17 +156,25 @@ contains
         implicit none
 
 	! Make empty array for the mesh co ordinates
-	integer mesh_coord(3)
-
+	integer :: mesh_coord(3)
+	integer :: j, l
+	rho =0
 	! Change the co ordinates to be in terms of the mesh
 	do l=1, npnode
 		do j=1,3
-		mesh_coord(j) = xv(j,l)-(2*(mycoord(j)-1))
+		mesh_coord(j) = xv(j,l)-(ngrid*(mycoord(j)-1))
+		enddo
+	 
+
+	rho(mesh_coord(1)+1, mesh_coord(2)+1, mesh_coord(3)+1)= rho(mesh_coord(1)+1, mesh_coord(2)+1, mesh_coord(3)+1)   +1
+	enddo
+
+	rho = rho/np
 	
 
+	
 
-rho = npmesh/np
-integer,parameter :: nmesh = 
+ 
 
     end subroutine calculate_rho
 
@@ -275,6 +297,24 @@ integer,parameter :: nmesh =
         !
 
         implicit none
+	integer :: i,j,k,l
+	if (this_image()==1) then 
+!selects master node
+	open (unit=1, file = "particle.txt")
+
+	do i=1, ncube
+		do j=1, ncube
+			do k=1, ncube
+				do l=1, npnode[i,j,k]
+				write(1,*) xv(1:3,l)
+
+				enddo
+			enddo
+		enddo
+	
+	enddo
+	close(1)	
+endif
 
     end subroutine dump_particles
 
