@@ -153,13 +153,6 @@ contains
         ! Initialize rho3
         !
 
-        do i=1,2
-           do j=1,2
-              do k=1,2
-                 rho3[i,1,j,1,k]=i+j-k
-              enddo
-           enddo
-        enddo
 
         call pencilfftforward
         crhoztmp = crhoz
@@ -186,15 +179,18 @@ contains
         !
 
         implicit none
-
+        integer i
         !
         ! First unpack the cubic representation of rho3 into a pencil representation in rhox.
         ! Pencils have their longest axis in the x dimension and their shortest in z. Pencils
         ! are stacked along y first and then z.
         !
 
-        !! DO SOME THINGS HERE TO GO FROM RHO3 TO RHOX
-        !extra comments
+        ! GO FROM RHO3 TO RHOX
+        rhox = 0
+        do i = 1,ncube
+           rhox((i-1)*ngrid+1:i*ngrid,:,:,:)=rho3(:,:,:,:,mycoord(2))[i,mycoord(1),mycoord(3)]
+        enddo
 
         call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
 
