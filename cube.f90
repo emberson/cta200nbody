@@ -78,11 +78,15 @@ program cube
 
     call setup_kernels
     call initial_conditions !Group 3 - randomize particles
+    call init_xv_test
+
+    force3(1,:,:,:)= 1
+!    force3(2,:,:,:)=.5
 
     do it = 1, timesteps !now proceed through timesteps
 
-        call calculate_rho !calculate density field, Group 3
-        call poisson_solve !Group 1
+        !call calculate_rho !calculate density field, Group 3
+        !call poisson_solve !Group 1
         call update_particles !Group 2
         call send_particles
 
@@ -227,8 +231,10 @@ contains
 
         implicit none
 
+        integer :: i
+        real :: x, y, z
+
         ! given x,v for each particle (initial conditions)
-        
         ! real, dimension(6, npmax) :: xv[ncube, ncube, *]
         
         ! from x determine the subcube of each particle
@@ -237,14 +243,11 @@ contains
         ! real, dimension(3, ngrid, ngrid, ngrid) :: force3
         
         ! update v and then x for each particle
+   
         
-!        for i=0, num_images()
-     
-        if (this_image() == 1) then
-           write(*,*) shape(xv)
-        endif
 
-        do i = 1, npnode
+        ! For each particle in a node
+        do i = 1, 1!npnode
            x = xv(1,i)
            y = xv(2,i)
            z = xv(3,i)
@@ -264,6 +267,11 @@ contains
               z = ncube
            end if
 
+
+           if (this_image() == 1) then
+              write(*,*) xv(1,i)
+           endif
+
            xv(4,i) = xv(4,i) + force3(1,x,y,z)
            xv(1,i) = xv(1,i) + xv(4,i)
 
@@ -272,7 +280,15 @@ contains
 
            xv(6,i) = xv(6,i) + force3(3, x,y,z)
            xv(3,i) = xv(3,i) + xv(6,i)
+        
+           if (this_image() == 1) then
+              write(*,*) xv(1,i)
+           endif
+
+
         enddo
+
+        !write(*,*) xv
 
     end subroutine update_particles
 
@@ -282,6 +298,8 @@ contains
         !
         ! Send all particles that have moved out of each node's physical volume to the appropriate neighbouring node.
         !
+
+      implicit none
 
         integer :: i, X_new, Y_new, Z_new
         real :: x, y, z, L
@@ -296,6 +314,11 @@ contains
            y = mod(xv(2,i), L)
            z = mod(xv(3,i), L)
 
+           xv(1,i) = x
+           xv(2,i) = y
+           xv(3,i) = z
+           
+
            X_new = 1 + (floor(x)/ngrid)
            Y_new = 1 + (floor(y)/ngrid)
            Z_new = 1 + (floor(z)/ngrid)
@@ -303,9 +326,10 @@ contains
            if ( (X_new .eq. myCoord(1)).and.(Y_new .eq. myCoord(2)).and.(Z_new .eq. myCoord(3)) ) then
               i = i + 1
            else
-              write (*,*) this_image(), '#', i, 'from (',myCoord(1), ',', myCoord(2), ',', myCoord(3), ')'
-              write (*,*) this_image(), '***    moved to(',X_new, ',', Y_new, ',', Z_new, ')'
-
+              if (this_image() == 1) then 
+                 write (*,*) this_image(), '#', i, 'from (',myCoord(1), ',', myCoord(2), ',', myCoord(3), ')'
+                 write (*,*) this_image(), '***    moved to(',X_new, ',', Y_new, ',', Z_new, ')'
+              end if
               npnode[X_new, Y_new, Z_new] = npnode[X_new, Y_new, Z_new] + 1
               xv(:,npnode[X_new, Y_new, Z_new])[X_new, Y_new, Z_new] = xv(:,i)
               xv(:,i) = xv(:,npnode)
@@ -315,8 +339,6 @@ contains
          end do
       
       
-        implicit none
-
     end subroutine send_particles
 
     ! ----------------------------------------------------------------------------------------------------
@@ -333,5 +355,19 @@ contains
 
     ! ----------------------------------------------------------------------------------------------------
 
+    subroutine init_xv_test
+
+      implicit none
+      integer :: i
+
+      do i = 1,npnode
+
+         xv(1,i) = (myCoord(1)-1)*ngrid + 0.5
+         xv(2,i) = (myCoord(2)-1)*ngrid + 0.5
+         xv(3,i) = (myCoord(3)-1)*ngrid + 0.5
+
+         end do 
+
+      end subroutine init_xv_test
 end program cube
 
