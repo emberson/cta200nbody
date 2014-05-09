@@ -11,7 +11,7 @@ program cube
     integer, parameter :: ngrid = 2 !each subcube has 2x2x2 mesh
     integer, parameter :: ncube = 2 !number of subcubes in one dimension
     integer, parameter :: np = 32 !number of particles
-    integer, parameter :: timesteps = 3
+    integer, parameter :: timesteps = 10!3
     integer, parameter :: npmax = 4*np/ncube**3
     integer, parameter :: npen = ngrid/ncube
 
@@ -55,6 +55,8 @@ program cube
     integer mycoord(3)
 
     !integer :: temp(3),test(3) !testing index_global
+    integer :: i
+
 
     ! ----------------------------------------------------------------------------------------------------
     ! MAIN
@@ -82,16 +84,27 @@ program cube
     !! Start with an equal number of particles on each node
     npnode = np/ncube**3 !number of particles in subcube
 
+    npnode=0
+    if (this_image() == 1) npnode=1
+
     call setup_kernels
     call initial_conditions !Group 3 - randomize particles
+    call init_xv_test
+
+    force3(1,:,:,:)= .1
+    !force3(2,:,:,:)= .05
+!    force3(2,:,:,:)=.5
 
     do it = 1, timesteps !now proceed through timesteps
 
-        call calculate_rho !calculate density field, Group 3
-        call poisson_solve !Group 1
+        !call calculate_rho !calculate density field, Group 3
+        !call poisson_solve !Group 1
         call update_particles !Group 2
         call send_particles
 
+        do i = 1, npnode
+           write(*,*) '(x,y,z) = ', xv(1,i), xv(2,i), xv(3,i)
+        end do
     enddo
 
     call dump_particles !G3
@@ -319,34 +332,30 @@ contains
            write(*,*) shape(xv)
         endif
 
+        ! For each particle in a node
         do i = 1, npnode
            x = xv(1,i)
            y = xv(2,i)
            z = xv(3,i)
 
-           x = mod(floor(x),ngrid)
-           if (x .eq. 0) then 
-              x = ncube
-           end if
+           if ( (x.ge. (myCoord(1))*ngrid) .or. (x.lt. (myCoord(1)-1)*ngrid) .or. (y.ge. (myCoord(2))*ngrid) .or. (y.lt. (myCoord(2)-1)*ngrid) &
+                      .or. (z.ge. (myCoord(3))*ngrid) .or. (z.lt. (myCoord(3)-1)*ngrid) ) then 
+                      write(*,*) 'ERROR !!! Your particle is outside !!!!'
+           endif
 
-            y = mod(floor(y),ngrid)
-           if (y .eq. 0) then 
-              y = ncube
-           end if
+           x = mod(floor(x),ngrid)+1 !find its locations in terms of local coordinates
+           y = mod(floor(y),ngrid)+1
+           z = mod(floor(z),ngrid)+1
 
-            z = mod(floor(z),ngrid)
-           if (z .eq. 0) then 
-              z = ncube
-           end if
-
-           xv(4,i) = xv(4,i) + force3(1,x,y,z)
-           xv(1,i) = xv(1,i) + xv(4,i)
+           xv(4,i) = xv(4,i) + force3(1,x,y,z) !update velocity : v(t +dt) = a(t) *dt + v(t)
+           xv(1,i) = xv(1,i) + xv(4,i) !update position : x(t+dt) = x(t) + v_x(t)
 
            xv(5,i) = xv(5,i) + force3(2, x,y,z)
            xv(2,i) = xv(2,i) + xv(5,i)
 
            xv(6,i) = xv(6,i) + force3(3, x,y,z)
            xv(3,i) = xv(3,i) + xv(6,i)
+
         enddo
 
     end subroutine update_particles
@@ -372,7 +381,7 @@ contains
            x = mod(xv(1,i), L) !find updated coordinates normalized to the cube
            y = mod(xv(2,i), L) 
            z = mod(xv(3,i), L) 
-           
+ 
            xv(1,i) = x !reassign to updated coordinates
            xv(2,i) = y
            xv(3,i) = z
@@ -381,19 +390,21 @@ contains
            Y_new = 1 + (floor(y)/ngrid)
            Z_new = 1 + (floor(z)/ngrid)
 
+           ! if particle is in same subcube, check next particle
            if ( (X_new .eq. myCoord(1)).and.(Y_new .eq. myCoord(2)).and.(Z_new .eq. myCoord(3)) ) then
-              i = i + 1 !if particle is in same subcube, check next particle
+                i = i + 1
            else !if particle is not in same subcube
               write (*,*) this_image(), '#', i, 'from (',myCoord(1), ',', myCoord(2), ',', myCoord(3), ')'
               write (*,*) this_image(), '***    moved to(',X_new, ',', Y_new, ',', Z_new, ')'
-
               npnode[X_new, Y_new, Z_new] = npnode[X_new, Y_new, Z_new] + 1 !add the particle at its new subcube location
               xv(:,npnode[X_new, Y_new, Z_new])[X_new, Y_new, Z_new] = xv(:,i) !add particles coordinates at its new subcube location
               xv(:,i) = xv(:,npnode) !remove particle coordinates from old subcube
               npnode = npnode - 1 !remove particle from old subcube
               iout = iout + 1 !add leaving particle to count
            end if
+
          end do
+         sync all !synchronize
 
     end subroutine send_particles
 
@@ -411,5 +422,19 @@ contains
 
     ! ----------------------------------------------------------------------------------------------------
 
+    subroutine init_xv_test
+
+      implicit none
+      integer :: i
+
+      do i = 1,npnode
+
+         xv(1,i) = (myCoord(1)-1)*ngrid + 0.5*(1+i)
+         xv(2,i) = (myCoord(2)-1)*ngrid + 0.5
+         xv(3,i) = (myCoord(3)-1)*ngrid + 0.5
+
+         end do 
+
+      end subroutine init_xv_test
 end program cube
 
