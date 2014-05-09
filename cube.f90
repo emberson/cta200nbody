@@ -295,6 +295,10 @@ contains
            x = mod(xv(1,i), L)
            y = mod(xv(2,i), L)
            z = mod(xv(3,i), L)
+           
+           xv(1,i) = x
+           xv(2,i) = y
+           xv(3,i) = z
 
            X_new = 1 + (floor(x)/ngrid)
            Y_new = 1 + (floor(y)/ngrid)
