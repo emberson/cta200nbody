@@ -14,6 +14,7 @@ program cube
     integer, parameter :: timesteps = 3
     integer, parameter :: npmax = 4*np/ncube**3
     integer, parameter :: npen = ngrid/ncube
+    integer, parameter :: nwrite = 2
 
     !! Particle positions and velocities
     real, dimension(6, npmax) :: xv[ncube, ncube, *]
@@ -85,10 +86,11 @@ program cube
         call poisson_solve
         call update_particles
         call send_particles
+	call dump_particles
 
     enddo
 
-    call dump_particles
+    
 
     ! ----------------------------------------------------------------------------------------------------
     ! SUBROUTINES
@@ -297,26 +299,40 @@ contains
         !
 
         implicit none
-	integer :: i,j,k,l
+	integer :: i,j,k,l,digit,file_no
+	Character(LEN = 1024 )::str, me 
+	
+	
+	if (mod(it-1,nwrite)==0) then !write text file every nwrite loop
 	if (this_image()==1) then 
-!selects master node
-	open (unit=1, file = "particle.txt")
+	file_no = ((it-1)/nwrite)+1
+
+	!selects master node
+	digit = log10(real(file_no))+1
+	write(me, "(i1)")digit
+	write(str, "(i"//trim(me)//")") file_no
+	open (unit=1, file = "particle"//trim(str) //".txt")                             
 
 	do i=1, ncube
 		do j=1, ncube
 			do k=1, ncube
 				do l=1, npnode[i,j,k]
-				write(1,*) xv(1:3,l)
+				write(1,*) xv(:,l)[i,j,k]
 
-				enddo
+				enddo 
+	
+	
 			enddo
 		enddo
 	
 	enddo
 	close(1)	
 endif
+endif	
+	
 
     end subroutine dump_particles
+
 
     ! ----------------------------------------------------------------------------------------------------
 
