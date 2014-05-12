@@ -8,10 +8,10 @@ program cube
     implicit none
 
     !! Simulation parameters
-    integer, parameter :: ngrid = 2 !each subcube has 2x2x2 mesh
+    integer, parameter :: ngrid = 32 !each subcube has 2x2x2 mesh
     integer, parameter :: ncube = 2 !number of subcubes in one dimension
-    integer, parameter :: np = 32 !number of particles
-    integer, parameter :: timesteps = 10!3
+    integer, parameter :: np = 2048 !number of particles
+    integer, parameter :: timesteps = 50!3
     integer, parameter :: npmax = 4*np/ncube**3
     integer, parameter :: npen = ngrid/ncube
     integer, parameter :: nwrite = 2
@@ -85,12 +85,12 @@ program cube
     !! Start with an equal number of particles on each node
     npnode = np/ncube**3 !number of particles in subcube
 
-    npnode=0
-    if (this_image() == 1) npnode=1
+    !npnode=0
+    !if (this_image() == 1) npnode=1
 
     call setup_kernels
     call initial_conditions !Group 3 - randomize particles
-    call init_xv_test
+    !call init_xv_test
 
     force3(1,:,:,:)= .1
     !force3(2,:,:,:)= .05
@@ -98,15 +98,18 @@ program cube
 
     do it = 1, timesteps !now proceed through timesteps
 
+       force3(1,:,:,:) = cos(it * 3.1415/timesteps)
+       force3(2,:,:,:) = sin(it * 3.1415/timesteps)
+
         !call calculate_rho !calculate density field, Group 3
         !call poisson_solve !Group 1
         call update_particles !Group 2
         call send_particles
 	call dump_particles
 
-        do i = 1, npnode
-           write(*,*) '(x,y,z) = ', xv(1,i), xv(2,i), xv(3,i)
-        end do
+        !do i = 1, npnode
+        !   write(*,*) '(x,y,z) = ', xv(1,i), xv(2,i), xv(3,i)
+        !end do
     enddo
 
     
@@ -401,9 +404,9 @@ contains
         
 !        for i=0, num_images()
      
-        if (this_image() == 1) then
-           write(*,*) shape(xv)
-        endif
+        !if (this_image() == 1) then
+        !   write(*,*) shape(xv)
+        !endif
 
         ! For each particle in a node
         do i = 1, npnode
@@ -467,8 +470,8 @@ contains
            if ( (X_new .eq. myCoord(1)).and.(Y_new .eq. myCoord(2)).and.(Z_new .eq. myCoord(3)) ) then
                 i = i + 1
            else !if particle is not in same subcube
-              write (*,*) this_image(), '#', i, 'from (',myCoord(1), ',', myCoord(2), ',', myCoord(3), ')'
-              write (*,*) this_image(), '***    moved to(',X_new, ',', Y_new, ',', Z_new, ')'
+              !write (*,*) this_image(), '#', i, 'from (',myCoord(1), ',', myCoord(2), ',', myCoord(3), ')'
+              !write (*,*) this_image(), '***    moved to(',X_new, ',', Y_new, ',', Z_new, ')'
               npnode[X_new, Y_new, Z_new] = npnode[X_new, Y_new, Z_new] + 1 !add the particle at its new subcube location
               xv(:,npnode[X_new, Y_new, Z_new])[X_new, Y_new, Z_new] = xv(:,i) !add particles coordinates at its new subcube location
               xv(:,i) = xv(:,npnode) !remove particle coordinates from old subcube
@@ -508,7 +511,7 @@ contains
 			! Converts the file number to a string for file naming, and opens the file.
 			write(strDigit, "(i1)") digit
 			write(strNum, "(i" // trim(strDigit) // ")") fileNum
-			open (unit = 1, file = "/mnt/scratch-lustre/dpereira/cta200nbody/TimeStamps/TimeStamp" // trim(strNum) // 				".txt")                             
+			open (unit = 1, file = "./TimeStamps/TimeStamp" // trim(strNum) // 				".txt")                             
 
 			! Iterates over all processors and particles, and records the information (with proper column formatting).
 			do i=1, ncube

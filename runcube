@@ -1,0 +1,17 @@
+ #!/bin/csh 
+ #PBS -l nodes=1:ppn=8
+ #PBS -q cta200q
+ #PBS -r n
+ #PBS -l walltime=00:15:00
+ #PBS -N cube
+ # EVERYTHING ABOVE THIS COMMENT IS NECESSARY, SHOULD ONLY CHANGE nodes,ppn,walltime and my_job_name VALUES
+ cd $PBS_O_WORKDIR
+
+module load intel/intel-14.0.0
+module load intelmpi/4.1.1.036
+
+export I_MPI_PERHOST=1
+export I_MPI_PROCESS_MANAGER=mpd
+export FOR_COARRAY_NUM_IMAGES=8
+export OMP_NUM_THREADS=1
+mpirun -ppn 8 ./cube.x
