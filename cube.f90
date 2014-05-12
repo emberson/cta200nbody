@@ -508,7 +508,7 @@ contains
 			! Converts the file number to a string for file naming, and opens the file.
 			write(strDigit, "(i1)") digit
 			write(strNum, "(i" // trim(strDigit) // ")") fileNum
-			open (unit = 1, file = "Particle" // trim(strNum) // ".txt")                             
+			open (unit = 1, file = "/mnt/scratch-lustre/dpereira/cta200nbody/TimeStamps/TimeStamp" // trim(strNum) // 				".txt")                             
 
 			! Iterates over all processors and particles, and records the information (with proper column formatting).
 			do i=1, ncube
