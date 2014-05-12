@@ -118,33 +118,35 @@ contains
         !
 
         implicit none
-	integer :: j, l,n
+	integer :: i, j, seedSize, time
 	integer, allocatable :: seed(:)
-	integer :: t
-	n=-3
-	
-	call system_clock(t)
+
+	! Sets all values to 0 (which will automatically handle setting all velocity components to 0).
 	xv = 0
-	call random_seed(size = n)
-            allocate(seed(n))
 	
+	! Prepares a seed to be used for generating random values.
+	seedSize = -3
+	call random_seed(size = seedSize)
+        allocate(seed(seedSize))
 	
-                  seed(:) = t*this_image()
-        
+	! Records the time, upon which the seed values for random number generation will be based.
+	call system_clock(time)
+	
+	! Allocates seed values for random number generation, multipled by this_image() to give a different seed for each processor.
+        seed(:) = time * this_image()
+        call random_seed(put = seed)
+		
+	! All nodes iterate over the particles they contain and initialize random positions.
+	do i = 1, npnode
+		! Initializes random xyz position components, but only with values between 0 and 1.
+		call RANDOM_NUMBER (xv(1:3,i))
+	
+		do j = 1, 3
+			! Shifts the xyz components that were generated to the proper sub-cube this processor manages.
+			xv(j,i) = (ngrid * xv(j,i)) + (ngrid * (mycoord(j) - 1))
+		enddo	
+	enddo
 
-	call random_seed(put=seed)
-	
-	
-	! All nodes iterate over the particles they contain and initialize random positions and 0 velocity.
-	do l=1, npnode
-
-	call RANDOM_NUMBER (xv(1:3,l))
-	
-		 do j=1,3
-			xv(j,l) = (ngrid*xv(j,l))+(ngrid*(mycoord(j)-1))
-			enddo	
-
-	 enddo
     end subroutine initial_conditions
 
     ! ----------------------------------------------------------------------------------------------------
@@ -154,30 +156,28 @@ contains
         ! Interpolate particles onto the mesh and accumulate their density normalized to the mean density.
         !
 
-
         implicit none
 
-	! Make empty array for the mesh co ordinates
-	integer :: mesh_coord(3)
-	integer :: j, l
-	rho =0
-	! Change the co ordinates to be in terms of the mesh
-	do l=1, npnode
-		do j=1,3
-		mesh_coord(j) = xv(j,l)-(ngrid*(mycoord(j)-1))
-		enddo
-	 
+	! Make empty array for the mesh coordinates.
+	integer :: mesh_coord(3), i, j
 
-	rho(mesh_coord(1)+1, mesh_coord(2)+1, mesh_coord(3)+1)= rho(mesh_coord(1)+1, mesh_coord(2)+1, mesh_coord(3)+1)   +1
+	! Resets the density to 0 every time the method is called.
+	rho = 0
+
+	! Changes the coordinates of each particle (based on the overall cube) to be in terms of the mesh of the sub-cube.
+	do i = 1, npnode
+		do j = 1, 3
+			! This formula is essentially the reversal of the equation in initial_conditions.
+			mesh_coord(j) = xv(j,i) - (ngrid * (mycoord(j) - 1))
+		enddo
+	
+	! Increase the density of the particles within that mesh by one (particle). 
+	rho(mesh_coord(1) + 1, mesh_coord(2) + 1, mesh_coord(3) + 1) = rho(mesh_coord(1) + 1, mesh_coord(2) + 1, mesh_coord(3) + 1) + 1
 	enddo
 
+	! Reduce the density of each mesh to a fraction of the total number of particles.
 	rho = rho/np
 	
-
-	
-
- 
-
     end subroutine calculate_rho
 
     ! ----------------------------------------------------------------------------------------------------
@@ -299,38 +299,43 @@ contains
         !
 
         implicit none
-	integer :: i,j,k,l,digit,file_no
-	Character(LEN = 1024 )::str, me 
-	
-	
-	if (mod(it-1,nwrite)==0) then !write text file every nwrite loop
-	if (this_image()==1) then 
-	file_no = ((it-1)/nwrite)+1
+	integer :: i, j, k, l, digit, fileNum
+	Character(LEN = 1024) :: strNum, strDigit 
+		
+	! Writes to a file every (nwrite)th iteration.
+	if (mod(it - 1, nwrite) == 0) then 
+		
+		! Only the master node will write the file.
+		if (this_image() == 1) then 
+			
+			! Writes the file number based on nwrite.
+			fileNum = (it - 1) / nwrite + 1
 
-	!selects master node
-	digit = log10(real(file_no))+1
-	write(me, "(i1)")digit
-	write(str, "(i"//trim(me)//")") file_no
-	open (unit=1, file = "particle"//trim(str) //".txt")                             
+			! Determines the number of digits in the file number, used for string formatting.
+			digit = log10(real(fileNum)) + 1
 
-	do i=1, ncube
-		do j=1, ncube
-			do k=1, ncube
-				do l=1, npnode[i,j,k]
-				write(1,*) xv(:,l)[i,j,k]
+			! Converts the file number to a string for file naming, and opens the file.
+			write(strDigit, "(i1)") digit
+			write(strNum, "(i" // trim(strDigit) // ")") fileNum
+			open (unit = 1, file = "Particle" // trim(strNum) // ".txt")                             
 
-				enddo 
-	
+			! Iterates over all processors and particles, and records the information (with proper column formatting).
+			do i=1, ncube
+				do j=1, ncube
+					do k=1, ncube
+						do l=1, npnode[i,j,k]
+							write(1,'(6f10.2)') xv(:6,l)[i,j,k]
+						enddo 
+					enddo
+				enddo
 	
 			enddo
-		enddo
 	
-	enddo
-	close(1)	
-endif
-endif	
+			! Saves the file.
+			close(1)	
+		endif
+	endif
 	
-
     end subroutine dump_particles
 
 
