@@ -302,7 +302,7 @@ contains
 	integer :: i, j, k, l, digit, fileNum
 	Character(LEN = 1024) :: strNum, strDigit 
 		
-	! Writes to a file every (nwrite)th iteration.
+	! Writes to a file every (nwrite)th iteration (including the first iteration).
 	if (mod(it - 1, nwrite) == 0) then 
 		
 		! Only the master node will write the file.
