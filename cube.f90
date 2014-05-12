@@ -260,6 +260,35 @@ contains
 
         implicit none
 
+        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
+
+        !
+        ! Transpose from crhoz to crhoy so that pencils have their longest axis in y and 
+        ! their shortest in z. Pencils are stacked along the z axis first and then x.
+        !
+
+        !! PUT CODE HERE FOR CRHOZ -> CRHOY
+
+        call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
+
+        !
+        ! Transpose from crhoy to crhox so that pencils have their longest axis in x and 
+        ! their shortest in z. Pencils are stacked along y first and then z.
+        !
+    
+        !! PUT CODE HERE FOR CRHOY -> CRHOX
+
+        call fftvec(crhox, ngrid*ncube, ngrid**2/ncube, -1)
+
+        rhox(::2,:,:,:) = real(crhox)
+        rhox(2::2,:,:,:) = aimag(crhox)
+
+        !
+        ! Here unpack the pencil decomposition in rhox to the cubic decomposition in rho3.
+        !
+
+        !! PUT CODE HERE FOR RHOX -> RHO3
+
     end subroutine pencilfftbackward
 
     ! ----------------------------------------------------------------------------------------------------
