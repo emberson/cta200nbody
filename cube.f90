@@ -8,51 +8,55 @@ program cube
     implicit none
 
     !! Simulation parameters
-    integer, parameter :: ngrid = 2
-    integer, parameter :: ncube = 2
-    integer, parameter :: np = 32
-    integer, parameter :: timesteps = 3
+    integer, parameter :: ngrid = 2 !each subcube has 2x2x2 mesh
+    integer, parameter :: ncube = 2 !number of subcubes in one dimension
+    integer, parameter :: np = 32 !number of particles
+    integer, parameter :: timesteps = 10!3
     integer, parameter :: npmax = 4*np/ncube**3
     integer, parameter :: npen = ngrid/ncube
 
     !! Particle positions and velocities
-    real, dimension(6, npmax) :: xv[ncube, ncube, *]
+    real, dimension(6, npmax) :: xv[ncube, ncube, *]!* is the number of images (8) divided by ncube twice (so will be ncube=2 again)
 
     !! Local density field 
-    real, dimension(ngrid, ngrid, ngrid) :: rho
-    real, dimension(ngrid, npen, ncube, npen, ncube) :: rhol
-    equivalence(rho, rhol)
+    real, dimension(ngrid, ngrid, ngrid) :: rho !local to processor you are on (not a coarray)
+    real, dimension(ngrid, npen, ncube, npen, ncube) :: rhol !rho redimensionalized, unpacking x and y coords
+    equivalence(rho, rhol) !physical space in memory for rho and rhol the same (=> equivalent in fortran)
 
     !! Local force field
-    real, dimension(3, ngrid, ngrid, ngrid) :: force3
+    real, dimension(3, ngrid, ngrid, ngrid) :: force3 !3D forcefield, components of force in x,y,z
 
     !! Force kernel
-    complex, dimension(npen, ncube, ncube, ngrid/2+1, npen, 3) :: cforce3[ncube, ncube, *]
+    complex, dimension(npen, ncube, ncube, ngrid/2+1, npen, 3) :: cforce3[ncube, ncube, *] !complex version of force3
 
-    !! Working copies of rho for pencil routines 
+    !! Working copies of rho for pencil routines - Group 1
     real, dimension(ngrid, npen, ncube, npen, ncube) :: rho3[ncube, ncube, *]
     real, dimension(ngrid*ncube+2, npen, ncube, npen) :: rhox[ncube, ncube, *]
     complex, dimension(ngrid*ncube/2+1, npen, ncube, npen) :: crhox[ncube, ncube, *]
     complex, dimension(npen, ncube, ncube, npen, ngrid/2+1) :: crhoy[ncube, ncube, *]
     complex, dimension(npen, ncube, ncube, ngrid/2+1, npen) :: crhoz[ncube, ncube, *]
 
-    !! Temporary coarrays needed in the pencil routines
+    !! Temporary coarrays needed in the pencil routines - Group 1
     complex, dimension(ngrid/2+1, npen, ncube, npen) :: crhotmpyxglobal[ncube, ncube, *]
     complex, dimension(npen, npen, ngrid/2+1) :: crhotmpzyglobal[ncube, ncube, *]
     integer, codimension[ncube,ncube,*] :: ixr,iyr,ibr
 
-    !! Temporary coarray needed in the Poisson solver routine
+    !! Temporary coarray needed in the Poisson solver routine - Group 1
     complex, dimension(npen, ncube, ncube, ngrid/2+1, npen) :: crhoztmp[ncube, ncube, *]
 
     !! Number of particles on each node and coarray to keep track of sending
-    integer npnode[ncube, ncube, *]
-    integer iout[ncube, ncube, *]
+    integer npnode[ncube, ncube, *] !number of particles in a given subcube
+    integer iout[ncube, ncube, *] !Group 2
 
     !! Time step counter
-    integer :: it
+    integer :: it !tracks timestep
 
     !! Image coordinates in the volume decomposition 
     integer mycoord(3)
+
+    !integer :: temp(3),test(3) !testing index_global
+    integer :: i
+
 
     ! ----------------------------------------------------------------------------------------------------
     ! MAIN
@@ -71,24 +75,39 @@ program cube
     endif
 
     !! Store cubic image coordinate
-    mycoord = this_image(xv)
+    myCoord = this_image(xv)
+
+    !temp = (/1,2,1/)
+    !test = index_global(temp)
+    !write(*,*) this_image(), 'testing',test
 
     !! Start with an equal number of particles on each node
-    npnode = np/ncube**3
+    npnode = np/ncube**3 !number of particles in subcube
+
+    npnode=0
+    if (this_image() == 1) npnode=1
 
     call setup_kernels
-    call initial_conditions
+    call initial_conditions !Group 3 - randomize particles
+    call init_xv_test
 
-    do it = 1, timesteps
+    force3(1,:,:,:)= .1
+    !force3(2,:,:,:)= .05
+!    force3(2,:,:,:)=.5
 
-        call calculate_rho
-        call poisson_solve
-        call update_particles
+    do it = 1, timesteps !now proceed through timesteps
+
+        !call calculate_rho !calculate density field, Group 3
+        !call poisson_solve !Group 1
+        call update_particles !Group 2
         call send_particles
 
+        do i = 1, npnode
+           write(*,*) '(x,y,z) = ', xv(1,i), xv(2,i), xv(3,i)
+        end do
     enddo
 
-    call dump_particles
+    call dump_particles !G3
 
     ! ----------------------------------------------------------------------------------------------------
     ! SUBROUTINES
@@ -138,14 +157,16 @@ contains
 
         implicit none
 
-        integer :: index_local(3), index_global(3)
+        integer :: index_local(3), index_global(3),j,toglobal
+        
 
-        !! THIS NEEDS TO BE CHANGED:
-        index_global = 0
+        do j=1,3
+           index_global(j) =(mycoord(j)-1)*ngrid+index_local(j)
+        enddo
 
     end function index_global
 
-    function delta_r(index_global)
+    function delta_r(index_glob)
         !
         ! Takes global mesh coordinates as an input and maps this to delta_r based on the following: 
         !   * Each dimension of index_global ranges from [1, ngrid*ncube] and this is linearly mapped onto
@@ -154,20 +175,30 @@ contains
 
         implicit none
 
-        integer :: index_global(3)
+        integer :: index_glob(3)
         real delta_r(3)
 
-        !! THIS NEEDS TO BE CHANGED:
-        delta_r = 0
+        real :: L, dx, dy, dz
+
+        L = ngrid * ncube
+        dx = index_glob(1)
+        dy = index_glob(2)
+        dz = index_glob(3)
+        
+        if(dx .gt. (L - dx)) dx = dx - L
+        if(dy .gt. (L - dy)) dy = dy - L
+        if(dz .gt. (L - dz)) dz = dz - L
+
+        delta_r = (/dx,dy,dz/)
 
     end function delta_r
 
     ! ----------------------------------------------------------------------------------------------------
 
-    subroutine initial_conditions
+    subroutine initial_conditions ! Group 3
         !
         ! Initialize particles to start with random positions within the range [0, ngrid*ncube] and with
-        ! zero velocity.
+        ! zero velocity, randomly fill up xv
         !
 
         implicit none
@@ -176,7 +207,7 @@ contains
 
     ! ----------------------------------------------------------------------------------------------------
 
-    subroutine calculate_rho
+    subroutine calculate_rho !Group 3
         !
         ! Interpolate particles onto the mesh and accumulate their density normalized to the mean density.
         !
@@ -203,7 +234,7 @@ contains
         !
 
         rho3 = rhol
-        call pencilfftforward
+        call pencilfftforward !Group 1
         crhoztmp = crhoz
 
         !
@@ -212,7 +243,7 @@ contains
 
         do idim = 1, 3
             crhoz = crhoztmp * conjg(cforce3(:,:,:,:,:,idim))
-            call pencilfftbackward
+            call pencilfftbackward !Group 1
             rhol = rho3
             force3(idim,:,:,:)=rho
         enddo
@@ -221,7 +252,7 @@ contains
 
     ! ----------------------------------------------------------------------------------------------------
 
-    subroutine pencilfftforward
+    subroutine pencilfftforward !Group 1
         !
         ! Start with the real space density field rho3 and transform this to Fourier space in variable crhoz. 
         ! This involves a transformation from a cubic to pencil decomposition.
@@ -237,7 +268,7 @@ contains
 
         !! DO SOME THINGS HERE TO GO FROM RHO3 TO RHOX
 
-        call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
+        call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1) !mkl fft
 
         !
         ! Now transpose pencils in the x-y plane so that they have their longest axis in y and 
@@ -291,7 +322,7 @@ contains
 
     ! ----------------------------------------------------------------------------------------------------
 
-    subroutine update_particles
+    subroutine update_particles !Group 2
         !
         ! First update each particle's velocity by adding to it the acceleration it feels from the force 
         ! of the cell it sits in. Then move each particle according to its updated velocity and apply
@@ -300,25 +331,107 @@ contains
 
         implicit none
 
+        integer :: i
+        real :: x,y,z
+        ! given x,v for each particle (initial conditions)
+        
+        ! real, dimension(6, npmax) :: xv[ncube, ncube, *]
+        
+        ! from x determine the subcube of each particle
+        ! also given F for each subcube     
+        
+        ! real, dimension(3, ngrid, ngrid, ngrid) :: force3
+        
+        ! update v and then x for each particle
+        
+!        for i=0, num_images()
+     
+        if (this_image() == 1) then
+           write(*,*) shape(xv)
+        endif
+
+        ! For each particle in a node
+        do i = 1, npnode
+           x = xv(1,i)
+           y = xv(2,i)
+           z = xv(3,i)
+
+           if ( (x.ge. (myCoord(1))*ngrid) .or. (x.lt. (myCoord(1)-1)*ngrid) .or. (y.ge. (myCoord(2))*ngrid) .or. (y.lt. (myCoord(2)-1)*ngrid) &
+                      .or. (z.ge. (myCoord(3))*ngrid) .or. (z.lt. (myCoord(3)-1)*ngrid) ) then 
+                      write(*,*) 'ERROR !!! Your particle is outside !!!!'
+           endif
+
+           x = mod(floor(x),ngrid)+1 !find its locations in terms of local coordinates
+           y = mod(floor(y),ngrid)+1
+           z = mod(floor(z),ngrid)+1
+
+           xv(4,i) = xv(4,i) + force3(1,x,y,z) !update velocity : v(t +dt) = a(t) *dt + v(t)
+           xv(1,i) = xv(1,i) + xv(4,i) !update position : x(t+dt) = x(t) + v_x(t)
+
+           xv(5,i) = xv(5,i) + force3(2, x,y,z)
+           xv(2,i) = xv(2,i) + xv(5,i)
+
+           xv(6,i) = xv(6,i) + force3(3, x,y,z)
+           xv(3,i) = xv(3,i) + xv(6,i)
+
+        enddo
+
     end subroutine update_particles
 
     ! ----------------------------------------------------------------------------------------------------
 
-    subroutine send_particles
+    subroutine send_particles !Group 2
         !
         ! Send all particles that have moved out of each node's physical volume to the appropriate neighbouring node.
         !
-
+     
         implicit none
+
+        integer :: i, X_new, Y_new, Z_new
+        real :: x, y, z, L
+
+        iout = 0 !number of particles that have left the subcube
+        i = 1 !particle index
+
+        L = ngrid * ncube !total size of cube
+
+        do while (i .le. npnode) !check ith particle
+           x = mod(xv(1,i), L) !find updated coordinates normalized to the cube
+           y = mod(xv(2,i), L) 
+           z = mod(xv(3,i), L) 
+ 
+           xv(1,i) = x !reassign to updated coordinates
+           xv(2,i) = y
+           xv(3,i) = z
+
+           X_new = 1 + (floor(x)/ngrid) !determine new subcube location
+           Y_new = 1 + (floor(y)/ngrid)
+           Z_new = 1 + (floor(z)/ngrid)
+
+           ! if particle is in same subcube, check next particle
+           if ( (X_new .eq. myCoord(1)).and.(Y_new .eq. myCoord(2)).and.(Z_new .eq. myCoord(3)) ) then
+                i = i + 1
+           else !if particle is not in same subcube
+              write (*,*) this_image(), '#', i, 'from (',myCoord(1), ',', myCoord(2), ',', myCoord(3), ')'
+              write (*,*) this_image(), '***    moved to(',X_new, ',', Y_new, ',', Z_new, ')'
+              npnode[X_new, Y_new, Z_new] = npnode[X_new, Y_new, Z_new] + 1 !add the particle at its new subcube location
+              xv(:,npnode[X_new, Y_new, Z_new])[X_new, Y_new, Z_new] = xv(:,i) !add particles coordinates at its new subcube location
+              xv(:,i) = xv(:,npnode) !remove particle coordinates from old subcube
+              npnode = npnode - 1 !remove particle from old subcube
+              iout = iout + 1 !add leaving particle to count
+           end if
+
+         end do
+         sync all !synchronize
 
     end subroutine send_particles
 
     ! ----------------------------------------------------------------------------------------------------
 
-    subroutine dump_particles
+    subroutine dump_particles !Group 3
         !
         ! Write out the positions of all particles contained in the volume to a single text file. 
-        ! Use only the master image for this.
+        ! Use only the master image for this. (processor with this_image() = 1)
         !
 
         implicit none
@@ -327,5 +440,19 @@ contains
 
     ! ----------------------------------------------------------------------------------------------------
 
+    subroutine init_xv_test
+
+      implicit none
+      integer :: i
+
+      do i = 1,npnode
+
+         xv(1,i) = (myCoord(1)-1)*ngrid + 0.5*(1+i)
+         xv(2,i) = (myCoord(2)-1)*ngrid + 0.5
+         xv(3,i) = (myCoord(3)-1)*ngrid + 0.5
+
+         end do 
+
+      end subroutine init_xv_test
 end program cube
 
