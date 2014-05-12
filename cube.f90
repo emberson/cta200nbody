@@ -190,10 +190,15 @@ contains
         if(dx .gt. (L - dx)) dx = dx - L
         if(dy .gt. (L - dy)) dy = dy - L
         if(dz .gt. (L - dz)) dz = dz - L
-
+	
+	if (dx .eq. L/2) dx=10**10
+	if (dy .eq. L/2) dy=10**10
+        if (dz .eq. L/2) dz=10**10
+	
         delta_r = (/dx,dy,dz/)
 
     end function delta_r
+
 
     ! ----------------------------------------------------------------------------------------------------
 
