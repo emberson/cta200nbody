@@ -3,11 +3,13 @@ import matplotlib.pyplot as pl
 import os
 import time
 
+# "path" is the path to the files, which is coded into the file saving subroutine in cube.f90.
 def display(ncube, ngrid, path):
 	# Time delay before displaying new plot.
 	delay = 0.001
 
-	# Determines the number of files over which to loop.
+	# Determines the number of files over which to loop. 
+	# NOTE: These files must be the only files in the directory for this approach to work.
 	files = os.listdir(path)
 	numFiles = len(files)
 
@@ -25,7 +27,7 @@ def display(ncube, ngrid, path):
 		pl.axes().set_ylim((0., float(ngrid * ncube)))
 		pl.xlabel("X Position")
 		pl.ylabel("Y Position")
-		pl.title("JD Is Our Favourite Best")
+		pl.title("N-Body Simulation: 2D Slice")
 
 		# Draws the plot and then delays the next iteration.
 		pl.draw()
