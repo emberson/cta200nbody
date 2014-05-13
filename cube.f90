@@ -37,8 +37,6 @@ program cube
     complex, dimension(npen, ncube, ncube, npen, ngrid/2+1) :: crhoy[ncube, ncube, *]
     complex, dimension(npen, ncube, ncube, ngrid/2+1, npen) :: crhoz[ncube, ncube, *]
 
-    complex, dimension(ngrid*ncube/2+1, npen, ncube, npen) :: crhox_copy[ncube, ncube, *]
-
 
     !! Temporary coarrays needed in the pencil routines
     complex, dimension(ngrid/2+1, npen, ncube, npen) :: crhotmpyxglobal[ncube, ncube, *]
@@ -81,39 +79,25 @@ program cube
     !! Store cubic image coordinate
     myCoord = this_image(xv)
 
-    !temp = (/1,2,1/)
-    !test = index_global(temp)
-    !write(*,*) this_image(), 'testing',test
-
     !! Start with an equal number of particles on each node
     npnode = np/ncube**3 !number of particles in subcube
 
-    !npnode=0
-    !if (this_image() == 1) npnode=1
-
     call setup_kernels
     call initial_conditions !Group 3 - randomize particles
-    !call init_xv_test
 
-    force3(1,:,:,:)= .1
-    !force3(2,:,:,:)= .05
-!    force3(2,:,:,:)=.5
 
     do it = 1, timesteps !now proceed through timesteps
 
        force3(1,:,:,:) = cos(it * 3.1415/timesteps)
        force3(2,:,:,:) = sin(it * 3.1415/timesteps)
 
-        !call calculate_rho !calculate density field, Group 3
-        !call poisson_solve !Group 1
+        call calculate_rho !calculate density field, Group 3
+        call poisson_solve !Group 1
         call update_particles !Group 2
 
         call send_particles
-	call dump_particles
+        call dump_particles
 
-        !do i = 1, npnode
-        !   write(*,*) '(x,y,z) = ', xv(1,i), xv(2,i), xv(3,i)
-        !end do
     enddo
 
     
@@ -339,17 +323,6 @@ contains
         ! are stacked along y first and then z.
         !
         IMG=this_image()
-        
-        ind = (IMG-1)*ngrid**3 + 1
-        do i=1,ngrid
-           do  j=1,ngrid
-              do k=1,ngrid
-                 rho(k,j,i)=ind
-                 ind = ind + 1!nin-1)*ncube**3+(i-1)*ngrid**2+(j-1)*ngrid+k
-              enddo
-           enddo
-        enddo
-        rho3=rhol
         sync all
         
 
@@ -359,11 +332,6 @@ contains
            rhox((i-1)*ngrid+1:i*ngrid,:,:,:)=rho3(:,:,:,:,mycoord(2))[i,mycoord(1),mycoord(3)]
         enddo
 
-        sync all
-        call sleep(IMG)
-        write(*,*)  'IMG rhox = ',IMG,' rhox = ', rhox
-        call sleep(num_images()-IMG)
-       
        ! call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
 
         !
@@ -373,11 +341,6 @@ contains
         
         crhox = cmplx(rhox(::2,:,:,:), rhox(2::2,:,:,:))
  
-!        call sleep(IMG)       
-!        write(*,*)  'IMG crhox* = ',IMG,' crhox* = ', crhox
-!        call sleep(num_images()-IMG)
-!        sync all
-        
         ! GO FROM CRHOX -> CRHOY
 
         sync all
@@ -413,7 +376,7 @@ contains
            enddo
         enddo
 
-        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
+!        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
         sync all
 
@@ -424,7 +387,7 @@ contains
     subroutine pencilfftbackward
         !
         ! Start with the Fourier transformed density field in crhoz and inverse transform this back to
-       ! ! real space in variable rho3. This involves a transformation from a pencil to cubic decomposition.
+        ! real space in variable rho3. This involves a transformation from a pencil to cubic decomposition.
         !
 
         implicit none
@@ -432,9 +395,8 @@ contains
         integer i,j,k, jStart,jStop,IMG
         complex, dimension(npen,ncube,npen,ngrid/2+1) :: temp
 
-        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
+ !       call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
 
-!        crhox_copy(:,:,:,:) = crhox(:,:,:,:)
         !
         ! Transpose from crhoz to crhoy so that pencils have their longest axis in y and 
         ! their shortest in z. Pencils are stacked along the z axis first and then x.
@@ -454,31 +416,15 @@ contains
         IMG=this_image()
         jStart=1
         jStop=ngrid/2
-        !write(*,*)jStart, ' <--jStart  jStop--> ',jStop
-        !if (mycoord(3) == ncube) jStop= jStop+1
         do i = 1,ncube
-           !temp=crhoy(:,:,:,:,(mycoord(3)-1)*ngrid/2+1:mycoord(3)*ngrid/2+1)[mycoord(2),mycoord(3),i]
-           
-           !do j = jStart, jStop
-            !  crhox(j,:,:,:)=temp(:,:,i,:,j)!crhox(j,:,:,:)[i,mycoord(1),mycoord(2)]
-              
-           !enddo
            temp = crhoy(:,:,myCoord(1),:,:)[mycoord(2),mycoord(3),i]
            if (i == ncube) jStop = jStop +1
            do j = jStart,jStop
-
               crhox((i-1)*ngrid/2+j,:,:,:) = temp(:,:,:,j)
            enddo
         enddo
 
         sync all
-!        crhox = crhox - crhox_copy
-
-        sync all
-        call sleep(IMG)
-        write(*,*)  'IMG crhox = ',IMG,' crhox = ', crhox
-        !call sleep(num_images()-IMG)
-
 
         !call fftvec(crhox, ngrid*ncube, ngrid**2/ncube, -1)
 
@@ -496,8 +442,6 @@ contains
         enddo
         sync all
 
-		call sleep(IMG)
-        write(*,*) 'IMG rho3 = ',IMG,' rho3 =' ,rho3
 
     end subroutine pencilfftbackward
 
@@ -658,19 +602,5 @@ contains
 
     ! ----------------------------------------------------------------------------------------------------
 
-    subroutine init_xv_test
-
-      implicit none
-      integer :: i
-
-      do i = 1,npnode
-
-         xv(1,i) = (myCoord(1)-1)*ngrid + 0.5*(1+i)
-         xv(2,i) = (myCoord(2)-1)*ngrid + 0.5
-         xv(3,i) = (myCoord(3)-1)*ngrid + 0.5
-
-         end do 
-
-      end subroutine init_xv_test
 end program cube
 
