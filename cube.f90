@@ -189,29 +189,24 @@ contains
         !
         IMG=this_image()
         
-        do i=1,ngrid
-           do  j=1,ngrid
-              do k=1,ngrid
-                 rho(k,j,i)=(IMG-1)*ncube**3+(i-1)*ngrid**2+(j-1)*ngrid+k
-              enddo
-           enddo
-        enddo
-        rho3=rhol
+        !do i=1,ngrid
+        !   do  j=1,ngrid
+        !      do k=1,ngrid
+        !         rho(k,j,i)=(IMG-1)*ncube**3+(i-1)*ngrid**2+(j-1)*ngrid+k
+        !      enddo
+        !   enddo
+        !enddo
+        !rho3=rhol
         
         sync all
-        !call sleep(IMG)
-        !write(*,*) 'IMG rho3 = ',IMG,' rho3 =' ,rho3
         
         ! GO FROM RHO3 TO RHOX
-        rhox = -IMG
+        rhox = 0
         do i = 1,ncube
            rhox((i-1)*ngrid+1:i*ngrid,:,:,:)=rho3(:,:,:,:,mycoord(2))[i,mycoord(1),mycoord(3)]
         enddo
-        sync all
-        !call sleep(IMG)
-        !write(*,*)  'IMG rhox = ',IMG,' rhox = ', rhox
         
-       ! call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
+        call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
 
         !
         ! Now transpose pencils in the x-y plane so that they have their longest axis in y and 
@@ -220,48 +215,44 @@ contains
         
         crhox = cmplx(rhox(::2,:,:,:), rhox(2::2,:,:,:))
         
-        !write(*,*)  'IMG crhox = ',IMG,' crhox = ', crhox
+        ! GO FROM CRHOX -> CRHOY
+        
         sync all
 
-        ! GO FROM CRHOX -> CRHOY
         crhoy=0
-        !jStart=(mycoord(3)-1)*ngrid/2+1
         jStart=1
-        !jStop=ngrid*mycoord(3)/2
         jStop=ngrid/2
-        !write(*,*)jStart, ' <--jStart  jStop--> ',jStop
+        
         if (mycoord(3) == ncube) jStop= jStop+1
         do i = 1,ncube
            crhoxtemp=crhox((mycoord(3)-1)*ngrid/2+1:mycoord(3)*ngrid/2+1,:,:,:)[i,mycoord(1),mycoord(2)]
-           ! temp=crhox(1:ngrid,:,:,:)[i,mycoord(1),mycoord(2)]
            do j = jStart, jStop
-               crhoy(:,:,i,:,j)=crhoxtemp(j,:,:,:)!crhox(j,:,:,:)[i,mycoord(1),mycoord(2)]
+               crhoy(:,:,i,:,j)=crhoxtemp(j,:,:,:)
            enddo
         enddo
-        sync all
-        !!call sleep(IMG)
-       ! write(*,*) 'IMG crhoy = ',IMG,' crhoy = ', crhoy 
-        !call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
+                
+        call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
         !
         ! Now transpose pencils in the y-z plane so that they have their longest axis in z and shortest in y.
         ! Pencils are stacked along the x axis first and then y.
         !
+        
+        sync all
+
         crhoz=0
         do i = 1,ncube
-           !crhoytemp(:,:,:)=crhoy(:,mycoord(2),mycoord(3),:,:)[mycoord(2),i,mycoord(1)]
            do j=1,ncube
-              !crhoytemp(:,:,:)=crhoy(:,mycoord(2),mycoord(3),:,:)[j,i,mycoord(1)]
-              !write(*,*)'IMG crhoytemp = ',IMG,' crhoytemp = ',crhoytemp
+              crhoytemp(:,:,:)=crhoy(:,mycoord(2),mycoord(3),:,:)[j,i,mycoord(1)]
               do k=1,ngrid/2+1
-                 crhoz(:,j,i,k,:)=crhoy(:,mycoord(2),mycoord(3),:,k)[j,i,mycoord(1)]
+                 crhoz(:,j,i,k,:)=crhoytemp(:,:,k)
               enddo
            enddo
         enddo
-        sync all
-        call sleep(IMG)
-        write(*,*) 'IMG crhoz = ',IMG,' crhoz = ',crhoz
+                
         call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
+
+        sync all
 
     end subroutine pencilfftforward
 
