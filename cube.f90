@@ -326,7 +326,8 @@ contains
         implicit none
 
         integer i,j,k, ind,jStart,jStop,IMG
-        complex, dimension(ngrid/2+1, npen, ncube, npen) :: temp
+        complex, dimension(ngrid/2+1, npen, ncube, npen) :: crhoxtemp
+        complex, dimension(npen,npen,ngrid/2+1)::crhoytemp
 
         !
         ! First unpack the cubic representation of rho3 into a pencil representation in rhox.
