@@ -8,10 +8,10 @@ program cube
     implicit none
 
     !! Simulation parameters
-    integer, parameter :: ngrid = 32 !each subcube has 2x2x2 mesh
-    integer, parameter :: ncube = 2 !number of subcubes in one dimension
-    integer, parameter :: np = 2048 !number of particles
-    integer, parameter :: timesteps = 50!3
+    integer, parameter :: ngrid = 4
+    integer, parameter :: ncube = 2
+    integer, parameter :: np = 32
+    integer, parameter :: timesteps = 1
     integer, parameter :: npmax = 4*np/ncube**3
     integer, parameter :: npen = ngrid/ncube
     integer, parameter :: nwrite = 2
@@ -324,9 +324,10 @@ contains
         !
 
         implicit none
-        integer i,j,k, jStart,jStop,IMG
-        complex, dimension(ngrid/2+1, npen, ncube, npen) :: crhoxtemp
-        complex, dimension(npen,  npen, ngrid/2+1) :: crhoytemp
+
+        integer i,j,k, ind,jStart,jStop,IMG
+        complex, dimension(ngrid/2+1, npen, ncube, npen) :: temp
+
         !
         ! First unpack the cubic representation of rho3 into a pencil representation in rhox.
         ! Pencils have their longest axis in the x dimension and their shortest in z. Pencils
@@ -350,7 +351,7 @@ contains
         do i = 1,ncube
            rhox((i-1)*ngrid+1:i*ngrid,:,:,:)=rho3(:,:,:,:,mycoord(2))[i,mycoord(1),mycoord(3)]
         enddo
-        
+
         call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
 
         !
@@ -361,7 +362,7 @@ contains
         crhox = cmplx(rhox(::2,:,:,:), rhox(2::2,:,:,:))
         
         ! GO FROM CRHOX -> CRHOY
-        
+
         sync all
 
         crhoy=0
@@ -374,8 +375,7 @@ contains
            do j = jStart, jStop
                crhoy(:,:,i,:,j)=crhoxtemp(j,:,:,:)
            enddo
-        enddo
-                
+        enddo   
 
         call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
@@ -395,7 +395,7 @@ contains
               enddo
            enddo
         enddo
-                
+
         call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
         sync all
@@ -411,6 +411,8 @@ contains
         !
 
         implicit none
+		integer i, IMG
+		IMG = this_image()
 
         call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
 
@@ -430,7 +432,7 @@ contains
     
         !! PUT CODE HERE FOR CRHOY -> CRHOX
 
-        call fftvec(crhox, ngrid*ncube, ngrid**2/ncube, -1)
+        !call fftvec(crhox, ngrid*ncube, ngrid**2/ncube, -1)
 
         rhox(::2,:,:,:) = real(crhox)
         rhox(2::2,:,:,:) = aimag(crhox)
@@ -439,7 +441,15 @@ contains
         ! Here unpack the pencil decomposition in rhox to the cubic decomposition in rho3.
         !
 
+        
         !! PUT CODE HERE FOR RHOX -> RHO3
+        do i=1, ncube
+	    	rho3(:,:,:,:,i) = rhox((mycoord(1)-1)*ngrid+1:mycoord(1)*ngrid,:,:,:)[mycoord(2),i,mycoord(3)]
+        enddo
+        sync all
+
+		call sleep(IMG)
+        write(*,*) 'IMG rho3 = ',IMG,' rho3 =' ,rho3
 
     end subroutine pencilfftbackward
 
