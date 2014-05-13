@@ -8,10 +8,10 @@ program cube
     implicit none
 
     !! Simulation parameters
-    integer, parameter :: ngrid = 2
+    integer, parameter :: ngrid = 4
     integer, parameter :: ncube = 2
     integer, parameter :: np = 32
-    integer, parameter :: timesteps = 3
+    integer, parameter :: timesteps = 1
     integer, parameter :: npmax = 4*np/ncube**3
     integer, parameter :: npen = ngrid/ncube
 
@@ -179,7 +179,7 @@ contains
         !
 
         implicit none
-        integer i,j,k, jStart,jStop,IMG
+        integer i,j,k, ind,jStart,jStop,IMG
         complex, dimension(ngrid/2+1, npen, ncube, npen) :: temp
         !
         ! First unpack the cubic representation of rho3 into a pencil representation in rhox.
@@ -187,19 +187,21 @@ contains
         ! are stacked along y first and then z.
         !
         IMG=this_image()
-        
+		        
+		ind = (IMG-1)*ngrid**3+1
         do i=1,ngrid
            do  j=1,ngrid
               do k=1,ngrid
-                 rho(k,j,i)=(IMG-1)*ncube**3+(i-1)*ngrid**2+(j-1)*ngrid+k
-              enddo
+                 rho(k,j,i)=ind !(IMG-1)*ncube**3+(i-1)*ngrid**2+(j-1)*ngrid+k
+				 ind = ind + 1 
+             enddo
            enddo
         enddo
         rho3=rhol
         
         sync all
-        !call sleep(IMG)
-        !write(*,*) 'IMG rho3 = ',IMG,' rho3 =' ,rho3
+        call sleep(IMG)
+        write(*,*) 'IMG rho3 = ',IMG,' rho3 =' ,rho3
         
         ! GO FROM RHO3 TO RHOX
         rhox = -IMG
@@ -207,8 +209,10 @@ contains
            rhox((i-1)*ngrid+1:i*ngrid,:,:,:)=rho3(:,:,:,:,mycoord(2))[i,mycoord(1),mycoord(3)]
         enddo
         sync all
-        !call sleep(IMG)
-        !write(*,*)  'IMG rhox = ',IMG,' rhox = ', rhox
+        call sleep(IMG)
+        write(*,*)  'IMG rhox = ',IMG,' rhox = ', rhox
+
+		
         
        ! call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
 
@@ -219,8 +223,10 @@ contains
         
         crhox = cmplx(rhox(::2,:,:,:), rhox(2::2,:,:,:))
         
-        !write(*,*)  'IMG crhox = ',IMG,' crhox = ', crhox
+        write(*,*)  'IMG crhox = ',IMG,' crhox = ', crhox
         sync all
+
+        !goto 253
         ! GO FROM CRHOX -> CRHOY
         crhoy=0
         !jStart=(mycoord(3)-1)*ngrid/2+1
@@ -239,13 +245,14 @@ contains
         sync all
         call sleep(IMG)
         write(*,*) 'IMG crhoy = ',IMG,' crhoy = ', crhoy
+
         !call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
         !
         ! Now transpose pencils in the y-z plane so that they have their longest axis in z and shortest in y.
         ! Pencils are stacked along the x axis first and then y.
         !
-
+!253  continue
         call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
     end subroutine pencilfftforward
@@ -259,6 +266,8 @@ contains
         !
 
         implicit none
+		integer i, IMG
+		IMG = this_image()
 
         call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
 
@@ -278,7 +287,7 @@ contains
     
         !! PUT CODE HERE FOR CRHOY -> CRHOX
 
-        call fftvec(crhox, ngrid*ncube, ngrid**2/ncube, -1)
+        !call fftvec(crhox, ngrid*ncube, ngrid**2/ncube, -1)
 
         rhox(::2,:,:,:) = real(crhox)
         rhox(2::2,:,:,:) = aimag(crhox)
@@ -287,7 +296,15 @@ contains
         ! Here unpack the pencil decomposition in rhox to the cubic decomposition in rho3.
         !
 
+        
         !! PUT CODE HERE FOR RHOX -> RHO3
+        do i=1, ncube
+	    	rho3(:,:,:,:,i) = rhox((mycoord(1)-1)*ngrid+1:mycoord(1)*ngrid,:,:,:)[mycoord(2),i,mycoord(3)]
+        enddo
+        sync all
+
+		call sleep(IMG)
+        write(*,*) 'IMG rho3 = ',IMG,' rho3 =' ,rho3
 
     end subroutine pencilfftbackward
 
