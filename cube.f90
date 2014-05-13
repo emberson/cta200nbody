@@ -179,8 +179,10 @@ contains
         !
 
         implicit none
+
         integer i,j,k, ind,jStart,jStop,IMG
         complex, dimension(ngrid/2+1, npen, ncube, npen) :: temp
+
         !
         ! First unpack the cubic representation of rho3 into a pencil representation in rhox.
         ! Pencils have their longest axis in the x dimension and their shortest in z. Pencils
@@ -226,23 +228,23 @@ contains
         write(*,*)  'IMG crhox = ',IMG,' crhox = ', crhox
         sync all
 
-        !goto 253
         ! GO FROM CRHOX -> CRHOY
         crhoy=0
         !jStart=(mycoord(3)-1)*ngrid/2+1
         jStart=1
         !jStop=ngrid*mycoord(3)/2
         jStop=ngrid/2
-        write(*,*)jStart, ' <--jStart  jStop--> ',jStop
+        !write(*,*)jStart, ' <--jStart  jStop--> ',jStop
         if (mycoord(3) == ncube) jStop= jStop+1
         do i = 1,ncube
-           temp=crhox((mycoord(3)-1)*ngrid/2+1:mycoord(3)*ngrid/2+1,:,:,:)[i,mycoord(1),mycoord(2)]
+           crhoxtemp=crhox((mycoord(3)-1)*ngrid/2+1:mycoord(3)*ngrid/2+1,:,:,:)[i,mycoord(1),mycoord(2)]
            ! temp=crhox(1:ngrid,:,:,:)[i,mycoord(1),mycoord(2)]
            do j = jStart, jStop
-              crhoy(:,:,i,:,j)=temp(j,:,:,:)!crhox(j,:,:,:)[i,mycoord(1),mycoord(2)]
+               crhoy(:,:,i,:,j)=crhoxtemp(j,:,:,:)!crhox(j,:,:,:)[i,mycoord(1),mycoord(2)]
            enddo
         enddo
         sync all
+
         call sleep(IMG)
         write(*,*) 'IMG crhoy = ',IMG,' crhoy = ', crhoy
 
@@ -252,7 +254,22 @@ contains
         ! Now transpose pencils in the y-z plane so that they have their longest axis in z and shortest in y.
         ! Pencils are stacked along the x axis first and then y.
         !
-!253  continue
+
+        crhoz=0
+        do i = 1,ncube
+           !crhoytemp(:,:,:)=crhoy(:,mycoord(2),mycoord(3),:,:)[mycoord(2),i,mycoord(1)]
+           do j=1,ncube
+              !crhoytemp(:,:,:)=crhoy(:,mycoord(2),mycoord(3),:,:)[j,i,mycoord(1)]
+              !write(*,*)'IMG crhoytemp = ',IMG,' crhoytemp = ',crhoytemp
+              do k=1,ngrid/2+1
+                 crhoz(:,j,i,k,:)=crhoy(:,mycoord(2),mycoord(3),:,k)[j,i,mycoord(1)]
+              enddo
+           enddo
+        enddo
+        sync all
+        call sleep(IMG)
+        write(*,*) 'IMG crhoz = ',IMG,' crhoz = ',crhoz
+
         call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
     end subroutine pencilfftforward
