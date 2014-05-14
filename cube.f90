@@ -88,29 +88,32 @@ program cube
     !npnode=0
     !if (this_image() == 1) npnode=1
 
-    call setup_kernels
-    call initial_conditions !Group 3 - randomize particles
+    call pencilfftforward
+    call pencilfftbackward
+
+!    call setup_kernels
+!    call initial_conditions !Group 3 - randomize particles
     !call init_xv_test
 
-    force3(1,:,:,:)= .1
+!    force3(1,:,:,:)= .1
     !force3(2,:,:,:)= .05
 !    force3(2,:,:,:)=.5
 
-    do it = 1, timesteps !now proceed through timesteps
+!    do it = 1, timesteps !now proceed through timesteps
 
-       force3(1,:,:,:) = cos(it * 3.1415/timesteps)
-       force3(2,:,:,:) = sin(it * 3.1415/timesteps)
+!       force3(1,:,:,:) = cos(it * 3.1415/timesteps)
+!       force3(2,:,:,:) = sin(it * 3.1415/timesteps)
 
         !call calculate_rho !calculate density field, Group 3
-        !call poisson_solve !Group 1
-        call update_particles !Group 2
-        call send_particles
-	call dump_particles
+!        call poisson_solve !Group 1
+!        call update_particles !Group 2
+!        call send_particles
+!	call dump_particles
 
         !do i = 1, npnode
         !   write(*,*) '(x,y,z) = ', xv(1,i), xv(2,i), xv(3,i)
         !end do
-    enddo
+!    enddo
 
     
 
@@ -297,9 +300,10 @@ contains
         ! Initialize rho3
         !
 
-
+        if(this_image()==1) write(*,*) "Began poisson_solve()"
+        
         call pencilfftforward
-
+        call pencilfftbackward
         crhoztmp = crhoz
 
         !
@@ -335,25 +339,27 @@ contains
         ! are stacked along y first and then z.
         !
         IMG=this_image()
+
+        if (IMG==1) write(*,*) "Began pencilfftforward"
         
-        !do i=1,ngrid
-        !   do  j=1,ngrid
-        !      do k=1,ngrid
-        !         rho(k,j,i)=(IMG-1)*ncube**3+(i-1)*ngrid**2+(j-1)*ngrid+k
-        !      enddo
-        !   enddo
-        !enddo
-        !rho3=rhol
+        do i=1,ngrid
+           do  j=1,ngrid
+              do k=1,ngrid
+                 rho(k,j,i)=(IMG-1)*ngrid**3+(i-1)*ngrid**2+(j-1)*ngrid+k
+              enddo
+           enddo
+        enddo
+        rho3=rhol
         
         sync all
         
         ! GO FROM RHO3 TO RHOX
-        rhox = 0
+        rhox = -1*IMG
         do i = 1,ncube
            rhox((i-1)*ngrid+1:i*ngrid,:,:,:)=rho3(:,:,:,:,mycoord(2))[i,mycoord(1),mycoord(3)]
         enddo
 
-        call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
+        !call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
 
         !
         ! Now transpose pencils in the x-y plane so that they have their longest axis in y and 
@@ -378,7 +384,15 @@ contains
            enddo
         enddo   
 
-        call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
+        !call sleep(IMG)
+        !write(*,*) "IMG=",IMG," crhoy=",crhoy
+        
+        !sync all
+        !call sleep(5)
+        !write(*,*) "HIIII"
+        !call sleep(5)
+
+        !call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
         !
         ! Now transpose pencils in the y-z plane so that they have their longest axis in z and shortest in y.
@@ -391,13 +405,19 @@ contains
         do i = 1,ncube
            do j=1,ncube
               crhoytemp(:,:,:)=crhoy(:,mycoord(2),mycoord(3),:,:)[j,i,mycoord(1)]
-              do k=1,ngrid/2+1
-                 crhoz(:,j,i,k,:)=crhoytemp(:,:,k)
+              do k=1,npen
+                 crhoz(:,j,i,:,k)=crhoytemp(k,:,:)
               enddo
            enddo
         enddo
 
-        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
+        sync all
+        !call sleep(IMG)
+        !write(*,*) "IMG=",IMG," chroz=",crhoz
+        !call sleep(5)
+        !write(*,*) "HIIIIII"
+        !call sleep(5)
+        !call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
         sync all
 
@@ -412,17 +432,38 @@ contains
         !
 
         implicit none
-		integer i, IMG
-		IMG = this_image()
+        integer i, IMG, j, k
+        complex, dimension(npen,ngrid/2+1,npen)::crhoztemp
+        
+        IMG = this_image()
+        if (IMG == 1) write(*,*) "Began pencilfftbackward"
 
-        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
+!        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
 
         !
         ! Transpose from crhoz to crhoy so that pencils have their longest axis in y and 
         ! their shortest in z. Pencils are stacked along the z axis first and then x.
         !
 
+
         !! PUT CODE HERE FOR CRHOZ -> CRHOY
+
+        do i=1,ncube
+           do j=1,ncube
+              crhoztemp(:,:,:) = crhoz(:,mycoord(1),mycoord(2),:,:)[mycoord(3),j,i]
+              !sync all
+              !call sleep(IMG)
+              !write(*,*) "IMG = ", IMG, " i = ", i, " j = ", j, " crhoztemp = ", crhoztemp
+              do k=1,npen
+                 crhoy(k,j,i,:,:) = crhoztemp(:,:,k)
+              enddo
+           enddo
+        enddo
+
+
+        !call sleep(IMG)
+        !write(*,*) "IMG=",IMG," crhoy=",crhoy
+
 
         call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
 
