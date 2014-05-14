@@ -21,6 +21,7 @@ program cube
 
     !! Local density field 
     real, dimension(ngrid, ngrid, ngrid) :: rho !local to processor you are on (not a coarray)
+    real, dimension(ngrid, ngrid, ngrid) :: rhold
     real, dimension(ngrid, npen, ncube, npen, ncube) :: rhol !rho redimensionalized, unpacking x and y coords
     equivalence(rho, rhol) !physical space in memory for rho and rhol the same (=> equivalent in fortran)
 
@@ -32,10 +33,14 @@ program cube
 
     !! Working copies of rho for pencil routines - Group 1
     real, dimension(ngrid, npen, ncube, npen, ncube) :: rho3[ncube, ncube, *]
+    real, dimension(ngrid, npen, ncube, npen, ncube) :: rho3old[ncube, ncube, *]
     real, dimension(ngrid*ncube+2, npen, ncube, npen) :: rhox[ncube, ncube, *]
     complex, dimension(ngrid*ncube/2+1, npen, ncube, npen) :: crhox[ncube, ncube, *]
     complex, dimension(npen, ncube, ncube, npen, ngrid/2+1) :: crhoy[ncube, ncube, *]
     complex, dimension(npen, ncube, ncube, ngrid/2+1, npen) :: crhoz[ncube, ncube, *]
+    complex, dimension(ngrid*ncube/2+1, npen, ncube, npen) :: crholdx[ncube, ncube, *]
+    complex, dimension(npen, ncube, ncube, npen, ngrid/2+1) :: crholdy[ncube, ncube, *]
+    complex, dimension(npen, ncube, ncube, ngrid/2+1, npen) :: crholdz[ncube, ncube, *]
 
 
     !! Temporary coarrays needed in the pencil routines
@@ -88,6 +93,7 @@ program cube
     !call setup_kernels
     !call initial_conditions !Group 3 - randomize particles
 
+    stop
 
     do it = 1, timesteps !now proceed through timesteps
 
@@ -331,19 +337,20 @@ contains
               enddo
            enddo
         enddo
+        rhold = rho
         rho3=rhol
         
         sync all
         
 
         ! GO FROM RHO3 TO RHOX
-        rhox = -1*IMG
+        rhox = -1*IMG*0
         do i = 1,ncube
            rhox((i-1)*ngrid+1:i*ngrid,:,:,:)=rho3(:,:,:,:,mycoord(2))[i,mycoord(1),mycoord(3)]
         enddo
 
 
-        call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
+!        call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
 
         !
         ! Now transpose pencils in the x-y plane so that they have their longest axis in y and 
@@ -352,6 +359,8 @@ contains
         
         crhox = cmplx(rhox(::2,:,:,:), rhox(2::2,:,:,:))
  
+        crholdx = crhox
+
         ! GO FROM CRHOX -> CRHOY
 
         sync all
@@ -368,7 +377,9 @@ contains
            enddo
         enddo   
         
-        call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
+        crholdy = crhoy
+
+!        call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
 
         !
@@ -388,7 +399,9 @@ contains
            enddo
         enddo
 
-        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
+        crholdz = crhoz
+
+!        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
         sync all
 
@@ -410,7 +423,9 @@ contains
         
         IMG = this_image()
        
-        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
+!        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
+
+!        write(*,*) "IMG = ", IMG, " crholdz-crhoz ", crholdz - crhoz
 
         sync all
 
@@ -432,8 +447,12 @@ contains
            enddo
         enddo
 
-        call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
+        sync all
+!        call sleep(IMG)
 
+!       call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
+
+!        write(*,*) "IMG = ", IMG, " crholdy-crhoy ", crholdy - crhoy
 
         !
         ! Transpose from crhoy to crhox so that pencils have their longest axis in x and 
@@ -444,18 +463,33 @@ contains
         !! PUT CODE HERE FOR CRHOY -> CRHOX
         
         sync all
-        
+ 
+!!!!!
+!       jStart=1
+!        jStop=ngrid/2
+!
+!        if (mycoord(3) == ncube) jStop= jStop+1
+!        do i = 1,ncube
+!           crhoxtemp=crhox((mycoord(3)-1)*ngrid/2+1:mycoord(3)*ngrid/2+1,:,:,:)[i,mycoord(1),mycoord(2)]
+!           do j = jStart, jStop
+!               crhoy(:,:,i,:,j)=crhoxtemp(j,:,:,:)
+!           enddo
+!        enddo    
+!!!!!
+       
         jStart=1
         jStop=ngrid/2
         do i = 1,ncube
            crhoytemp = crhoy(:,:,myCoord(1),:,:)[mycoord(2),mycoord(3),i]
-           if (i == ncube) jStop = jStop +1
-           do j = jStart,jStop
+           do j = jStart,jStop+i/ncube
               crhox((i-1)*ngrid/2+j,:,:,:) = crhoytemp(:,:,:,j)
+              !crhox(j,:,:,:) = crhoytemp(:,:,:,j)
            enddo
         enddo
 
-        call fftvec(crhox, ngrid*ncube, ngrid**2/ncube, -1)
+!        call fftvec(crhox, ngrid*ncube, ngrid**2/ncube, -1)
+
+        write(*,*) "IMG = ", IMG, " crholdx-crhox ", crholdx - crhox
 
         rhox(::2,:,:,:) = real(crhox)
         rhox(2::2,:,:,:) = aimag(crhox)
@@ -471,6 +505,9 @@ contains
         enddo
         sync all
 
+        rhol = rho3
+
+!        write(*,*) "IMG = ",IMG," rhold-rho=", rhold-rho
 
     end subroutine pencilfftbackward
 
