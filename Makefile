@@ -1,5 +1,5 @@
 FC=ifort
-FFLAGS=-mkl -coarray -coarray-num-images=8
+FFLAGS=-mkl -coarray -coarray-num-images=216
 
 cube.x: cube.f90 mkl_fftvec.o
 	$(FC) $(FFLAGS) cube.f90 mkl_fftvec.o -o $@

@@ -8,8 +8,8 @@ program cube
     implicit none
 
     !! Simulation parameters
-    integer, parameter :: ngrid = 8
-    integer, parameter :: ncube = 4
+    integer, parameter :: ngrid = 12
+    integer, parameter :: ncube = 6
     integer, parameter :: np = 32
     integer, parameter :: timesteps = 1
     integer, parameter :: npmax = 4*np/ncube**3
@@ -486,7 +486,7 @@ contains
 
         rhol = rho3
 
-        !write(*,*) "extreme rhold-rho, min=", minval(rhold-rho), "max=", maxval(rhold-rho)
+        write(*,*) "extreme rhold-rho, min=", minval(rhold-rho), "max=", maxval(rhold-rho)
         
     end subroutine pencilfftbackward
 

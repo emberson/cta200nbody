@@ -1,6 +1,6 @@
  #!/bin/csh 
- #PBS -l nodes=1:ppn=8
- #PBS -q cta200q
+ #PBS -l nodes=27:ppn=8
+ #PBS -q workq
  #PBS -r n
  #PBS -l walltime=00:15:00
  #PBS -N cube
@@ -12,6 +12,6 @@ module load intelmpi/4.1.1.036
 
 export I_MPI_PERHOST=1
 export I_MPI_PROCESS_MANAGER=mpd
-export FOR_COARRAY_NUM_IMAGES=8
-export OMP_NUM_THREADS=1
+export FOR_COARRAY_NUM_IMAGES=216
+export OMP_NUM_THREADS=8
 mpirun -ppn 8 ./cube.x
