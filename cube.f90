@@ -84,24 +84,47 @@ program cube
     myCoord = this_image(xv)
 
     !! Start with an equal number of particles on each node
-    npnode = np/ncube**3 !number of particles in subcube
+    ! npnode = np/ncube**3 !number of particles in subcube
 
     !call pencilfftforward
     !call pencilfftbackward
 
-    call setup_kernels
-    call initial_conditions !Group 3 - randomize particles
+    !call setup_kernels
+    !call initial_conditions !Group 3 - randomize particles
 
     !stop
 
+    !do it = 1, timesteps !now proceed through timesteps
+
+    !  call calculate_rho !calculate density field, Group 3
+    !  call poisson_solve !Group 1
+    !   call update_particles !Group 2
+    !    call send_particles
+    !   call dump_particles
+
+    !enddo
+    
+    ! This code is used for testing.
+    force3(1,:,:,:) = 0
+    force3(2,:,:,:) = 0
+    force3(3,:,:,:) = 0
+
+    call init_cake
+    !call dump_particles
     do it = 1, timesteps !now proceed through timesteps
 
-        call calculate_rho !calculate density field, Group 3
-        call poisson_solve !Group 1
-        call update_particles !Group 2
-        call send_particles
-        call dump_particles
+       !force3(1,:,:,:) = cos(it * 3.1415/timesteps)
+       !force3(2,:,:,:) = sin(it * 3.1415/timesteps)
 
+        !call calculate_rho !calculate density field, Group 3
+        !call poisson_solve !Group 1
+       sync all
+       call dump_particles
+        
+       sync all
+        call update_particles !Group 2
+       sync all 
+        call send_particles
     enddo
     
 
@@ -634,8 +657,36 @@ contains
 	
     end subroutine dump_particles
 
-
     ! ----------------------------------------------------------------------------------------------------
+
+	subroutine init_cake
+		implicit none
+		integer ::i,j,k
+		real :: v
+		npnode = ngrid**3
+	
+		do i=0,(ngrid-1)
+			do j=0,(ngrid-1)
+				do k=0,(ngrid-1)
+					xv(1,i + j*ngrid + k*ngrid**2 + 1) = (myCoord(1)-1)*ngrid + (i+0.5)
+					xv(2,i + j*ngrid + k*ngrid**2 + 1) = (myCoord(2)-1)*ngrid + (j+0.5)
+					xv(3,i + j*ngrid + k*ngrid**2 + 1) = (myCoord(3)-1)*ngrid + (k+0.5)
+
+					!v = sin(2*3.141592/(ngrid*ncube)*((myCoord(1)+myCoord(2)+myCoord(3)-3)*ngrid + 1.5 + i + j + k))
+
+     v = 0.1*sin(2*3.141592/(ngrid*ncube)*((myCoord(1)-1)*ngrid + 0.5 + i ))
+
+					xv(4,i + j*ngrid + k*ngrid**2 + 1) = v
+     xv(5:6,i + j*ngrid + k*ngrid**2 + 1) = 0
+					
+				enddo
+			enddo
+		enddo 
+
+	end subroutine
+
+ 
+   !---------------------
 
 end program cube
 
