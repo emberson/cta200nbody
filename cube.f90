@@ -8,6 +8,7 @@ program cube
     implicit none
 
     !! Simulation parameters
+
     integer, parameter :: ngrid = 4
     integer, parameter :: ncube = 2
     integer, parameter :: np = (ncube**3) * (ngrid**3)!32
@@ -20,6 +21,7 @@ program cube
 
     !! Local density field 
     real, dimension(ngrid, ngrid, ngrid) :: rho !local to processor you are on (not a coarray)
+    !real, dimension(ngrid, ngrid, ngrid) :: rhold
     real, dimension(ngrid, npen, ncube, npen, ncube) :: rhol !rho redimensionalized, unpacking x and y coords
     equivalence(rho, rhol) !physical space in memory for rho and rhol the same (=> equivalent in fortran)
 
@@ -35,6 +37,9 @@ program cube
     complex, dimension(ngrid*ncube/2+1, npen, ncube, npen) :: crhox[ncube, ncube, *]
     complex, dimension(npen, ncube, ncube, npen, ngrid/2+1) :: crhoy[ncube, ncube, *]
     complex, dimension(npen, ncube, ncube, ngrid/2+1, npen) :: crhoz[ncube, ncube, *]
+    !complex, dimension(ngrid*ncube/2+1, npen, ncube, npen) :: crholdx[ncube, ncube, *]
+    !complex, dimension(npen, ncube, ncube, npen, ngrid/2+1) :: crholdy[ncube, ncube, *]
+    !complex, dimension(npen, ncube, ncube, ngrid/2+1, npen) :: crholdz[ncube, ncube, *]
 
 
     !! Temporary coarrays needed in the pencil routines
@@ -79,24 +84,19 @@ program cube
     myCoord = this_image(xv)
 
     !! Start with an equal number of particles on each node
+
     !npnode = np/ncube**3 !number of particles in subcube
 
-    !call setup_kernels
+    call setup_kernels
     !call initial_conditions !Group 3 - randomize particles
-
-    force3(1,:,:,:) = 0
-    force3(2,:,:,:) = 0
-    force3(3,:,:,:) = 0
 
     call init_cake
     !call dump_particles
     do it = 1, timesteps !now proceed through timesteps
 
-       !force3(1,:,:,:) = cos(it * 3.1415/timesteps)
-       !force3(2,:,:,:) = sin(it * 3.1415/timesteps)
-
-        !call calculate_rho !calculate density field, Group 3
-        !call poisson_solve !Group 1
+    
+        call calculate_rho !calculate density field, Group 3
+        call poisson_solve !Group 1
        sync all
        call dump_particles
         
@@ -105,11 +105,10 @@ program cube
        sync all 
         call send_particles
     enddo
-
     
 
     ! ----------------------------------------------------------------------------------------------------
-    ! SUBROUTINES
+    ! SUBROUTINE
     ! ----------------------------------------------------------------------------------------------------
 
 contains
@@ -291,9 +290,9 @@ contains
         ! Initialize rho3
         !
 
-
+        if(this_image()==1) write(*,*) "Began poisson_solve()"
+        
         call pencilfftforward
-
         crhoztmp = crhoz
 
         !
@@ -329,16 +328,28 @@ contains
         ! are stacked along y first and then z.
         !
         IMG=this_image()
+        
+        !do i=1,ngrid
+        !   do  j=1,ngrid
+        !      do k=1,ngrid
+        !         rho(k,j,i)=(IMG-1)*ngrid**3+(i-1)*ngrid**2+(j-1)*ngrid+k
+        !      enddo
+        !   enddo
+        !enddo
+        !rhold = rho
+        !rho3=rhol
+        
         sync all
         
 
         ! GO FROM RHO3 TO RHOX
-        rhox = 0
+        rhox = -1*IMG*0
         do i = 1,ncube
            rhox((i-1)*ngrid+1:i*ngrid,:,:,:)=rho3(:,:,:,:,mycoord(2))[i,mycoord(1),mycoord(3)]
         enddo
 
-       ! call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
+
+        call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
 
         !
         ! Now transpose pencils in the x-y plane so that they have their longest axis in y and 
@@ -347,6 +358,8 @@ contains
         
         crhox = cmplx(rhox(::2,:,:,:), rhox(2::2,:,:,:))
  
+        !crholdx = crhox
+
         ! GO FROM CRHOX -> CRHOY
 
         sync all
@@ -362,8 +375,11 @@ contains
                crhoy(:,:,i,:,j)=crhoxtemp(j,:,:,:)
            enddo
         enddo   
+        
+        !crholdy = crhoy
 
-!        call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
+        call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
+
 
         !
         ! Now transpose pencils in the y-z plane so that they have their longest axis in z and shortest in y.
@@ -376,13 +392,15 @@ contains
         do i = 1,ncube
            do j=1,ncube
               crhoytemp(:,:,:)=crhoy(:,mycoord(2),mycoord(3),:,:)[j,i,mycoord(1)]
-              do k=1,ngrid/2+1
-                 crhoz(:,j,i,k,:)=crhoytemp(:,:,k)
+              do k=1,npen
+                 crhoz(:,j,i,:,k)=crhoytemp(k,:,:)
               enddo
            enddo
         enddo
 
-!        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
+        !crholdz = crhoz
+
+        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
         sync all
 
@@ -398,19 +416,38 @@ contains
 
         implicit none
 
-        integer i,j,k, jStart,jStop,IMG
-        complex, dimension(npen,ncube,npen,ngrid/2+1) :: temp
+        integer i, IMG, j, k, jStart,jStop
+        complex, dimension(npen,ngrid/2+1,npen)::crhoztemp
+        complex, dimension(npen,ncube,npen,ngrid/2+1) :: crhoytemp
+        
+        IMG = this_image()
+       
+        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
 
- !       call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
+        sync all
 
         !
         ! Transpose from crhoz to crhoy so that pencils have their longest axis in y and 
         ! their shortest in z. Pencils are stacked along the z axis first and then x.
         !
 
+
         !! PUT CODE HERE FOR CRHOZ -> CRHOY
 
-        !call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
+
+        do i=1,ncube
+           do j=1,ncube
+              crhoztemp(:,:,:) = crhoz(:,mycoord(1),mycoord(2),:,:)[mycoord(3),j,i]
+              do k=1,npen
+                 crhoy(k,j,i,:,:) = crhoztemp(:,:,k)
+              enddo
+           enddo
+        enddo
+
+        sync all
+
+       call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
+
 
         !
         ! Transpose from crhoy to crhox so that pencils have their longest axis in x and 
@@ -419,20 +456,19 @@ contains
     
         
         !! PUT CODE HERE FOR CRHOY -> CRHOX
-        IMG=this_image()
+        
+        sync all
+      
         jStart=1
         jStop=ngrid/2
         do i = 1,ncube
-           temp = crhoy(:,:,myCoord(1),:,:)[mycoord(2),mycoord(3),i]
-           if (i == ncube) jStop = jStop +1
-           do j = jStart,jStop
-              crhox((i-1)*ngrid/2+j,:,:,:) = temp(:,:,:,j)
+           crhoytemp = crhoy(:,:,myCoord(1),:,:)[mycoord(2),mycoord(3),i]
+           do j = jStart,jStop+i/ncube
+              crhox((i-1)*ngrid/2+j,:,:,:) = crhoytemp(:,:,:,j)
            enddo
         enddo
 
-        sync all
-
-        !call fftvec(crhox, ngrid*ncube, ngrid**2/ncube, -1)
+        call fftvec(crhox, ngrid*ncube, ngrid**2/ncube, -1)
 
         rhox(::2,:,:,:) = real(crhox)
         rhox(2::2,:,:,:) = aimag(crhox)
@@ -440,7 +476,8 @@ contains
         !
         ! Here unpack the pencil decomposition in rhox to the cubic decomposition in rho3.
         !
-
+        
+        sync all
         
         !! PUT CODE HERE FOR RHOX -> RHO3
         do i=1, ncube
@@ -448,7 +485,10 @@ contains
         enddo
         sync all
 
+        rhol = rho3
 
+        !write(*,*) "extreme rhold-rho, min=", minval(rhold-rho), "max=", maxval(rhold-rho)
+        
     end subroutine pencilfftbackward
 
     ! ----------------------------------------------------------------------------------------------------
@@ -466,20 +506,11 @@ contains
         real :: x,y,z
         ! given x,v for each particle (initial conditions)
         
-        ! real, dimension(6, npmax) :: xv[ncube, ncube, *]
-        
+                
         ! from x determine the subcube of each particle
         ! also given F for each subcube     
         
-        ! real, dimension(3, ngrid, ngrid, ngrid) :: force3
-        
         ! update v and then x for each particle
-        
-!        for i=0, num_images()
-     
-        !if (this_image() == 1) then
-        !   write(*,*) shape(xv)
-        !endif
 
         ! For each particle in a node
         do i = 1, npnode
@@ -495,11 +526,6 @@ contains
            x = modulo(floor(x),ngrid)+1 !find its locations in terms of local coordinates
            y = modulo(floor(y),ngrid)+1
            z = modulo(floor(z),ngrid)+1
-
-
-           if ( x <= 0 .or. y <= 0 .or. z <= 0 ) then 
-                      write(*,*) 'error***', x, y, z, myCoord(1), myCoord(2), myCoord(3)
-           endif
 
            xv(4,i) = xv(4,i) + force3(1,x,y,z) !update velocity : v(t +dt) = a(t) *dt + v(t)
            xv(1,i) = xv(1,i) + xv(4,i) !update position : x(t+dt) = x(t) + v_x(t)
@@ -610,7 +636,6 @@ contains
 	
     end subroutine dump_particles
 
-
     ! ----------------------------------------------------------------------------------------------------
 
 	subroutine init_cake
@@ -636,17 +661,7 @@ contains
 				enddo
 			enddo
 		enddo 
-
-
-  write(*,*) this_image(), minval(xv(4,1:npnode)), maxval(xv(4, 1:npnode))
-	end subroutine
-
- 
-   !---------------------
- 
-       
-        
-
+end subroutine init_cake
 
 end program cube
 
