@@ -21,7 +21,7 @@ program cube
 
     !! Local density field 
     real, dimension(ngrid, ngrid, ngrid) :: rho !local to processor you are on (not a coarray)
-    real, dimension(ngrid, ngrid, ngrid) :: rhold
+    !real, dimension(ngrid, ngrid, ngrid) :: rhold
     real, dimension(ngrid, npen, ncube, npen, ncube) :: rhol !rho redimensionalized, unpacking x and y coords
     equivalence(rho, rhol) !physical space in memory for rho and rhol the same (=> equivalent in fortran)
 
@@ -37,9 +37,9 @@ program cube
     complex, dimension(ngrid*ncube/2+1, npen, ncube, npen) :: crhox[ncube, ncube, *]
     complex, dimension(npen, ncube, ncube, npen, ngrid/2+1) :: crhoy[ncube, ncube, *]
     complex, dimension(npen, ncube, ncube, ngrid/2+1, npen) :: crhoz[ncube, ncube, *]
-    complex, dimension(ngrid*ncube/2+1, npen, ncube, npen) :: crholdx[ncube, ncube, *]
-    complex, dimension(npen, ncube, ncube, npen, ngrid/2+1) :: crholdy[ncube, ncube, *]
-    complex, dimension(npen, ncube, ncube, ngrid/2+1, npen) :: crholdz[ncube, ncube, *]
+    !complex, dimension(ngrid*ncube/2+1, npen, ncube, npen) :: crholdx[ncube, ncube, *]
+    !complex, dimension(npen, ncube, ncube, npen, ngrid/2+1) :: crholdy[ncube, ncube, *]
+    !complex, dimension(npen, ncube, ncube, ngrid/2+1, npen) :: crholdz[ncube, ncube, *]
 
 
     !! Temporary coarrays needed in the pencil routines
@@ -86,13 +86,13 @@ program cube
     !! Start with an equal number of particles on each node
     npnode = np/ncube**3 !number of particles in subcube
 
-    call pencilfftforward
-    call pencilfftbackward
+    !call pencilfftforward
+    !call pencilfftbackward
 
-    !call setup_kernels
-    !call initial_conditions !Group 3 - randomize particles
+    call setup_kernels
+    call initial_conditions !Group 3 - randomize particles
 
-    stop
+    !stop
 
     do it = 1, timesteps !now proceed through timesteps
 
@@ -291,7 +291,6 @@ contains
         if(this_image()==1) write(*,*) "Began poisson_solve()"
         
         call pencilfftforward
-        call pencilfftbackward
         crhoztmp = crhoz
 
         !
@@ -328,15 +327,15 @@ contains
         !
         IMG=this_image()
         
-        do i=1,ngrid
-           do  j=1,ngrid
-              do k=1,ngrid
-                 rho(k,j,i)=(IMG-1)*ngrid**3+(i-1)*ngrid**2+(j-1)*ngrid+k
-              enddo
-           enddo
-        enddo
-        rhold = rho
-        rho3=rhol
+        !do i=1,ngrid
+        !   do  j=1,ngrid
+        !      do k=1,ngrid
+        !         rho(k,j,i)=(IMG-1)*ngrid**3+(i-1)*ngrid**2+(j-1)*ngrid+k
+        !      enddo
+        !   enddo
+        !enddo
+        !rhold = rho
+        !rho3=rhol
         
         sync all
         
@@ -357,7 +356,7 @@ contains
         
         crhox = cmplx(rhox(::2,:,:,:), rhox(2::2,:,:,:))
  
-        crholdx = crhox
+        !crholdx = crhox
 
         ! GO FROM CRHOX -> CRHOY
 
@@ -375,7 +374,7 @@ contains
            enddo
         enddo   
         
-        crholdy = crhoy
+        !crholdy = crhoy
 
         call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
@@ -397,7 +396,7 @@ contains
            enddo
         enddo
 
-        crholdz = crhoz
+        !crholdz = crhoz
 
         call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
@@ -486,7 +485,7 @@ contains
 
         rhol = rho3
 
-        write(*,*) "extreme rhold-rho, min=", minval(rhold-rho), "max=", maxval(rhold-rho)
+        !write(*,*) "extreme rhold-rho, min=", minval(rhold-rho), "max=", maxval(rhold-rho)
         
     end subroutine pencilfftbackward
 
