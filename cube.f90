@@ -8,8 +8,8 @@ program cube
     implicit none
 
     !! Simulation parameters
-    integer, parameter :: ngrid = 4
-    integer, parameter :: ncube = 2
+    integer, parameter :: ngrid = 8
+    integer, parameter :: ncube = 4
     integer, parameter :: np = 32
     integer, parameter :: timesteps = 1
     integer, parameter :: npmax = 4*np/ncube**3
@@ -33,7 +33,6 @@ program cube
 
     !! Working copies of rho for pencil routines - Group 1
     real, dimension(ngrid, npen, ncube, npen, ncube) :: rho3[ncube, ncube, *]
-    real, dimension(ngrid, npen, ncube, npen, ncube) :: rho3old[ncube, ncube, *]
     real, dimension(ngrid*ncube+2, npen, ncube, npen) :: rhox[ncube, ncube, *]
     complex, dimension(ngrid*ncube/2+1, npen, ncube, npen) :: crhox[ncube, ncube, *]
     complex, dimension(npen, ncube, ncube, npen, ngrid/2+1) :: crhoy[ncube, ncube, *]
@@ -100,7 +99,6 @@ program cube
         call calculate_rho !calculate density field, Group 3
         call poisson_solve !Group 1
         call update_particles !Group 2
-
         call send_particles
         call dump_particles
 
@@ -350,7 +348,7 @@ contains
         enddo
 
 
-!        call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
+        call fftvec(rhox, ngrid*ncube, ngrid**2/ncube, 1)
 
         !
         ! Now transpose pencils in the x-y plane so that they have their longest axis in y and 
@@ -379,7 +377,7 @@ contains
         
         crholdy = crhoy
 
-!        call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
+        call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
 
         !
@@ -401,7 +399,7 @@ contains
 
         crholdz = crhoz
 
-!        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
+        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, 1)
 
         sync all
 
@@ -423,9 +421,7 @@ contains
         
         IMG = this_image()
        
-!        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
-
-!        write(*,*) "IMG = ", IMG, " crholdz-crhoz ", crholdz - crhoz
+        call cfftvec(crhoz, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
 
         sync all
 
@@ -448,11 +444,9 @@ contains
         enddo
 
         sync all
-!        call sleep(IMG)
 
-!       call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
+       call cfftvec(crhoy, ngrid*ncube, ngrid*(ngrid/2+1)/ncube, -1)
 
-!        write(*,*) "IMG = ", IMG, " crholdy-crhoy ", crholdy - crhoy
 
         !
         ! Transpose from crhoy to crhox so that pencils have their longest axis in x and 
@@ -463,33 +457,17 @@ contains
         !! PUT CODE HERE FOR CRHOY -> CRHOX
         
         sync all
- 
-!!!!!
-!       jStart=1
-!        jStop=ngrid/2
-!
-!        if (mycoord(3) == ncube) jStop= jStop+1
-!        do i = 1,ncube
-!           crhoxtemp=crhox((mycoord(3)-1)*ngrid/2+1:mycoord(3)*ngrid/2+1,:,:,:)[i,mycoord(1),mycoord(2)]
-!           do j = jStart, jStop
-!               crhoy(:,:,i,:,j)=crhoxtemp(j,:,:,:)
-!           enddo
-!        enddo    
-!!!!!
-       
+      
         jStart=1
         jStop=ngrid/2
         do i = 1,ncube
            crhoytemp = crhoy(:,:,myCoord(1),:,:)[mycoord(2),mycoord(3),i]
            do j = jStart,jStop+i/ncube
               crhox((i-1)*ngrid/2+j,:,:,:) = crhoytemp(:,:,:,j)
-              !crhox(j,:,:,:) = crhoytemp(:,:,:,j)
            enddo
         enddo
 
-!        call fftvec(crhox, ngrid*ncube, ngrid**2/ncube, -1)
-
-        write(*,*) "IMG = ", IMG, " crholdx-crhox ", crholdx - crhox
+        call fftvec(crhox, ngrid*ncube, ngrid**2/ncube, -1)
 
         rhox(::2,:,:,:) = real(crhox)
         rhox(2::2,:,:,:) = aimag(crhox)
@@ -497,7 +475,8 @@ contains
         !
         ! Here unpack the pencil decomposition in rhox to the cubic decomposition in rho3.
         !
-
+        
+        sync all
         
         !! PUT CODE HERE FOR RHOX -> RHO3
         do i=1, ncube
@@ -507,8 +486,8 @@ contains
 
         rhol = rho3
 
-!        write(*,*) "IMG = ",IMG," rhold-rho=", rhold-rho
-
+        !write(*,*) "extreme rhold-rho, min=", minval(rhold-rho), "max=", maxval(rhold-rho)
+        
     end subroutine pencilfftbackward
 
     ! ----------------------------------------------------------------------------------------------------
@@ -526,20 +505,11 @@ contains
         real :: x,y,z
         ! given x,v for each particle (initial conditions)
         
-        ! real, dimension(6, npmax) :: xv[ncube, ncube, *]
-        
+                
         ! from x determine the subcube of each particle
         ! also given F for each subcube     
         
-        ! real, dimension(3, ngrid, ngrid, ngrid) :: force3
-        
         ! update v and then x for each particle
-        
-!        for i=0, num_images()
-     
-        !if (this_image() == 1) then
-        !   write(*,*) shape(xv)
-        !endif
 
         ! For each particle in a node
         do i = 1, npnode
