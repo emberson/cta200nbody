@@ -125,6 +125,13 @@ contains
         integer :: i, j, k, idim
         real :: r2, dr3(3)
 
+        !do i=1,ngrid*ncube
+        !   dr3 = delta_r((/i,1,1/))
+
+         !  end do
+
+        !stop
+
         do idim = 1, 3
             do k = 1, ngrid
                 do j = 1, ngrid
@@ -179,20 +186,20 @@ contains
         real :: L, dx, dy, dz
 
         L = ngrid * ncube
-        dx = index_glob(1)
-        dy = index_glob(2)
-        dz = index_glob(3)
+        dx = index_glob(1) - 1
+        dy = index_glob(2) - 1
+        dz = index_glob(3) - 1
         
         if(dx .gt. (L - dx)) dx = dx - L
         if(dy .gt. (L - dy)) dy = dy - L
         if(dz .gt. (L - dz)) dz = dz - L
 	
-	if (dx .eq. L/2) dx=10**10
-	if (dy .eq. L/2) dy=10**10
-        if (dz .eq. L/2) dz=10**10
+	if (dx .eq. L/2) dx=1.e10
+	if (dy .eq. L/2) dy=1.e10
+        if (dz .eq. L/2) dz=1.e10
 	
         delta_r = (/dx,dy,dz/)
-
+        !if (this_image() ==1) write(*,*) delta_r 
     end function delta_r
 
 
