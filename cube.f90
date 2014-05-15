@@ -10,12 +10,11 @@ program cube
     !! Simulation parameters
     integer, parameter :: ngrid = 4
     integer, parameter :: ncube = 2
-    integer, parameter :: np = 32
-    integer, parameter :: timesteps = 1
-    integer, parameter :: npmax = 4*np/ncube**3
+    integer, parameter :: np = (ncube**3) * (ngrid**3)!32
+    integer, parameter :: timesteps = 200
+    integer, parameter :: npmax = np
     integer, parameter :: npen = ngrid/ncube
-    integer, parameter :: nwrite = 2
-
+    integer, parameter :: nwrite = 1
     !! Particle positions and velocities
     real, dimension(6, npmax) :: xv[ncube, ncube, *]!* is the number of images (8) divided by ncube twice (so will be ncube=2 again)
 
@@ -80,24 +79,31 @@ program cube
     myCoord = this_image(xv)
 
     !! Start with an equal number of particles on each node
-    npnode = np/ncube**3 !number of particles in subcube
+    !npnode = np/ncube**3 !number of particles in subcube
 
-    call setup_kernels
-    call initial_conditions !Group 3 - randomize particles
+    !call setup_kernels
+    !call initial_conditions !Group 3 - randomize particles
 
+    force3(1,:,:,:) = 0
+    force3(2,:,:,:) = 0
+    force3(3,:,:,:) = 0
 
+    call init_cake
+    !call dump_particles
     do it = 1, timesteps !now proceed through timesteps
 
-       force3(1,:,:,:) = cos(it * 3.1415/timesteps)
-       force3(2,:,:,:) = sin(it * 3.1415/timesteps)
+       !force3(1,:,:,:) = cos(it * 3.1415/timesteps)
+       !force3(2,:,:,:) = sin(it * 3.1415/timesteps)
 
-        call calculate_rho !calculate density field, Group 3
-        call poisson_solve !Group 1
+        !call calculate_rho !calculate density field, Group 3
+        !call poisson_solve !Group 1
+       sync all
+       call dump_particles
+        
+       sync all
         call update_particles !Group 2
-
+       sync all 
         call send_particles
-        call dump_particles
-
     enddo
 
     
@@ -481,14 +487,19 @@ contains
            y = xv(2,i)
            z = xv(3,i)
 
-           if ( (x.ge. (myCoord(1))*ngrid) .or. (x.lt. (myCoord(1)-1)*ngrid) .or. (y.ge. (myCoord(2))*ngrid) .or. (y.lt. (myCoord(2)-1)*ngrid) &
-                      .or. (z.ge. (myCoord(3))*ngrid) .or. (z.lt. (myCoord(3)-1)*ngrid) ) then 
-                      write(*,*) 'ERROR !!! Your particle is outside !!!!'
+           if ( (x  >= (myCoord(1))*ngrid) .or. (x < (myCoord(1)-1)*ngrid) .or. (y >= (myCoord(2))*ngrid) .or. (y < (myCoord(2)-1)*ngrid) &
+                      .or. (z >= (myCoord(3))*ngrid) .or. (z < (myCoord(3)-1)*ngrid) ) then 
+                      write(*,*) 'error', x, y, z, myCoord(1), myCoord(2), myCoord(3)
            endif
 
-           x = mod(floor(x),ngrid)+1 !find its locations in terms of local coordinates
-           y = mod(floor(y),ngrid)+1
-           z = mod(floor(z),ngrid)+1
+           x = modulo(floor(x),ngrid)+1 !find its locations in terms of local coordinates
+           y = modulo(floor(y),ngrid)+1
+           z = modulo(floor(z),ngrid)+1
+
+
+           if ( x <= 0 .or. y <= 0 .or. z <= 0 ) then 
+                      write(*,*) 'error***', x, y, z, myCoord(1), myCoord(2), myCoord(3)
+           endif
 
            xv(4,i) = xv(4,i) + force3(1,x,y,z) !update velocity : v(t +dt) = a(t) *dt + v(t)
            xv(1,i) = xv(1,i) + xv(4,i) !update position : x(t+dt) = x(t) + v_x(t)
@@ -521,9 +532,9 @@ contains
         L = ngrid * ncube !total size of cube
 
         do while (i .le. npnode) !check ith particle
-           x = mod(xv(1,i), L) !find updated coordinates normalized to the cube
-           y = mod(xv(2,i), L) 
-           z = mod(xv(3,i), L) 
+           x = modulo(xv(1,i), L) !find updated coordinates normalized to the cube
+           y = modulo(xv(2,i), L) 
+           z = modulo(xv(3,i), L) 
  
            xv(1,i) = x !reassign to updated coordinates
            xv(2,i) = y
@@ -577,7 +588,7 @@ contains
 
 			! Converts the file number to a string for file naming, and opens the file.
 			write(strDigit, "(i1)") digit
-			write(strNum, "(i" // trim(strDigit) // ")") fileNum
+			write(strNum, "(i"// trim(strDigit) //")") fileNum
 			open (unit = 1, file = "./TimeStamps/TimeStamp" // trim(strNum) // ".txt")                             
 
 			! Iterates over all processors and particles, and records the information (with proper column formatting).
@@ -601,6 +612,41 @@ contains
 
 
     ! ----------------------------------------------------------------------------------------------------
+
+	subroutine init_cake
+		implicit none
+		integer ::i,j,k
+		real :: v
+		npnode = ngrid**3
+	
+		do i=0,(ngrid-1)
+			do j=0,(ngrid-1)
+				do k=0,(ngrid-1)
+					xv(1,i + j*ngrid + k*ngrid**2 + 1) = (myCoord(1)-1)*ngrid + (i+0.5)
+					xv(2,i + j*ngrid + k*ngrid**2 + 1) = (myCoord(2)-1)*ngrid + (j+0.5)
+					xv(3,i + j*ngrid + k*ngrid**2 + 1) = (myCoord(3)-1)*ngrid + (k+0.5)
+
+					!v = sin(2*3.141592/(ngrid*ncube)*((myCoord(1)+myCoord(2)+myCoord(3)-3)*ngrid + 1.5 + i + j + k))
+
+     v = 0.1*sin(2*3.141592/(ngrid*ncube)*xv(1,i + j*ngrid + k*ngrid**2 + 1))
+
+					xv(4,i + j*ngrid + k*ngrid**2 + 1) = v
+     xv(5:6,i + j*ngrid + k*ngrid**2 + 1) = 0
+					
+				enddo
+			enddo
+		enddo 
+
+
+  write(*,*) this_image(), minval(xv(4,1:npnode)), maxval(xv(4, 1:npnode))
+	end subroutine
+
+ 
+   !---------------------
+ 
+       
+        
+
 
 end program cube
 
