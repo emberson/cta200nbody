@@ -521,9 +521,9 @@ contains
                       write(*,*) 'ERROR !!! Your particle is outside !!!!'
            endif
 
-           x = mod(floor(x),ngrid)+1 !find its locations in terms of local coordinates
-           y = mod(floor(y),ngrid)+1
-           z = mod(floor(z),ngrid)+1
+           x = modulo(floor(x),ngrid)+1 !find its locations in terms of local coordinates
+           y = modulo(floor(y),ngrid)+1
+           z = modulo(floor(z),ngrid)+1
 
            xv(4,i) = xv(4,i) + force3(1,x,y,z) !update velocity : v(t +dt) = a(t) *dt + v(t)
            xv(1,i) = xv(1,i) + xv(4,i) !update position : x(t+dt) = x(t) + v_x(t)
@@ -556,9 +556,9 @@ contains
         L = ngrid * ncube !total size of cube
 
         do while (i .le. npnode) !check ith particle
-           x = mod(xv(1,i), L) !find updated coordinates normalized to the cube
-           y = mod(xv(2,i), L) 
-           z = mod(xv(3,i), L) 
+           x = modulo(xv(1,i), L) !find updated coordinates normalized to the cube
+           y = modulo(xv(2,i), L) 
+           z = modulo(xv(3,i), L) 
  
            xv(1,i) = x !reassign to updated coordinates
            xv(2,i) = y
