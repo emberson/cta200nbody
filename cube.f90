@@ -11,11 +11,11 @@ program cube
 
     integer, parameter :: ngrid = 4
     integer, parameter :: ncube = 2
-    integer, parameter :: np = (ncube**3) * (ngrid**3)!32
-    integer, parameter :: timesteps = 200
+    integer, parameter :: np = (ngrid*ncube)**3!32
+    integer, parameter :: timesteps = 2000
     integer, parameter :: npmax = np
     integer, parameter :: npen = ngrid/ncube
-    integer, parameter :: nwrite = 1
+    integer, parameter :: nwrite = 5
     !! Particle positions and velocities
     real, dimension(6, npmax) :: xv[ncube, ncube, *]!* is the number of images (8) divided by ncube twice (so will be ncube=2 again)
 
@@ -85,24 +85,23 @@ program cube
 
     !! Start with an equal number of particles on each node
 
-    !npnode = np/ncube**3 !number of particles in subcube
+    npnode = np/ncube**3 !number of particles in subcube
 
     call setup_kernels
-    !call initial_conditions !Group 3 - randomize particles
+    call initial_conditions !Group 3 - randomize particles
 
-    call init_cake
+   ! call init_cake
     !call dump_particles
     do it = 1, timesteps !now proceed through timesteps
 
     
         call calculate_rho !calculate density field, Group 3
         call poisson_solve !Group 1
-       sync all
-       call dump_particles
-        
-       sync all
+        sync all
+        call dump_particles
+        sync all
         call update_particles !Group 2
-       sync all 
+        sync all 
         call send_particles
     enddo
     
@@ -510,7 +509,7 @@ contains
         implicit none
 
         integer :: i
-        real :: x,y,z
+        real :: x,y,z,L
         ! given x,v for each particle (initial conditions)
         
                 
@@ -520,10 +519,16 @@ contains
         ! update v and then x for each particle
 
         ! For each particle in a node
+        L = ngrid * ncube
         do i = 1, npnode
-           x = xv(1,i)
-           y = xv(2,i)
-           z = xv(3,i)
+           x = modulo(xv(1,i),L)
+           y = modulo(xv(2,i),L)
+           z = modulo(xv(3,i),L)
+           
+           xv(1,i) = x
+           xv(2,i) = y
+           xv(3,i) = z
+
 
            if ( (x  >= (myCoord(1))*ngrid) .or. (x < (myCoord(1)-1)*ngrid) .or. (y >= (myCoord(2))*ngrid) .or. (y < (myCoord(2)-1)*ngrid) &
                       .or. (z >= (myCoord(3))*ngrid) .or. (z < (myCoord(3)-1)*ngrid) ) then 
@@ -534,13 +539,13 @@ contains
            y = modulo(floor(y),ngrid)+1
            z = modulo(floor(z),ngrid)+1
 
-           xv(4,i) = xv(4,i) + force3(1,x,y,z) !update velocity : v(t +dt) = a(t) *dt + v(t)
+           xv(4,i) = xv(4,i) - force3(1,x,y,z) !update velocity : v(t +dt) = a(t) *dt + v(t)
            xv(1,i) = xv(1,i) + xv(4,i) !update position : x(t+dt) = x(t) + v_x(t)
 
-           xv(5,i) = xv(5,i) + force3(2, x,y,z)
+           xv(5,i) = xv(5,i) - force3(2, x,y,z)
            xv(2,i) = xv(2,i) + xv(5,i)
 
-           xv(6,i) = xv(6,i) + force3(3, x,y,z)
+           xv(6,i) = xv(6,i) - force3(3, x,y,z)
            xv(3,i) = xv(3,i) + xv(6,i)
 
         enddo
@@ -549,51 +554,48 @@ contains
 
     ! ----------------------------------------------------------------------------------------------------
 
-    subroutine send_particles !Group 2
-        !
-        ! Send all particles that have moved out of each node's physical volume to the appropriate neighbouring node.
-        !
-     
-        implicit none
+integer function islab(x)
+  real x
+  islab=floor(x/ngrid)+1
+end function islab
+subroutine send_particles
 
-        integer :: i, X_new, Y_new, Z_new
-        real :: x, y, z, L
-
-        iout = 0 !number of particles that have left the subcube
-        i = 1 !particle index
-
-        L = ngrid * ncube !total size of cube
-
-        do while (i .le. npnode) !check ith particle
-           x = modulo(xv(1,i), L) !find updated coordinates normalized to the cube
-           y = modulo(xv(2,i), L) 
-           z = modulo(xv(3,i), L) 
- 
-           xv(1,i) = x !reassign to updated coordinates
-           xv(2,i) = y
-           xv(3,i) = z
-
-           X_new = 1 + (floor(x)/ngrid) !determine new subcube location
-           Y_new = 1 + (floor(y)/ngrid)
-           Z_new = 1 + (floor(z)/ngrid)
-
-           ! if particle is in same subcube, check next particle
-           if ( (X_new .eq. myCoord(1)).and.(Y_new .eq. myCoord(2)).and.(Z_new .eq. myCoord(3)) ) then
-                i = i + 1
-           else !if particle is not in same subcube
-              !write (*,*) this_image(), '#', i, 'from (',myCoord(1), ',', myCoord(2), ',', myCoord(3), ')'
-              !write (*,*) this_image(), '***    moved to(',X_new, ',', Y_new, ',', Z_new, ')'
-              npnode[X_new, Y_new, Z_new] = npnode[X_new, Y_new, Z_new] + 1 !add the particle at its new subcube location
-              xv(:,npnode[X_new, Y_new, Z_new])[X_new, Y_new, Z_new] = xv(:,i) !add particles coordinates at its new subcube location
-              xv(:,i) = xv(:,npnode) !remove particle coordinates from old subcube
-              npnode = npnode - 1 !remove particle from old subcube
-              iout = iout + 1 !add leaving particle to count
+  implicit none
+  integer itarget3(3),idim,idir,ipart,itarget,nptarget,npnewtarget,nplim
+  do idim=1,3
+     do idir=-1,1,2
+        iout=npmax+1
+        ipart=1
+        do 
+           if (ipart > npnode) exit
+           if ( any( (islab(xv(idim,ipart))-mycoord(idim))*idir &
+                .eq. (/1,1-ncube/)) ) then
+!              write(*,*) idim,idir,xv(:,ipart),mycoord
+              iout=iout-1
+              xv(:,iout)=xv(:,ipart)
+              xv(:,ipart)=xv(:,npnode)
+              npnode=npnode-1
+           else
+              ipart=ipart+1
            end if
+        end do
+        sync all
+        itarget3=mycoord
+        itarget = modulo(myCoord(idim) + idir - 1, ncube) + 1
+        itarget3(idim)=itarget
+        nptarget=npnode[itarget3(1),itarget3(2),itarget3(3)]+1
+        npnewtarget=nptarget+npmax-iout
+        nplim=2*npmax-iout[itarget3(1),itarget3(2),itarget3(3)]
+        if (npnewtarget .gt. nplim) pause 'too many particles'
+        xv(:,nptarget:npnewtarget)[itarget3(1),itarget3(2),itarget3(3)]=&
+             xv(:,iout:npmax)
+        npnode[itarget3(1),itarget3(2),itarget3(3)]=npnewtarget
+        sync all    
+     end do
+  end do
+end subroutine send_particles    
 
-         end do
-         sync all !synchronize
 
-    end subroutine send_particles
 
     ! ----------------------------------------------------------------------------------------------------
 
@@ -610,7 +612,7 @@ contains
 	! Writes to a file every (nwrite)th iteration (including the first iteration).
 	if (mod(it - 1, nwrite) == 0) then 
 		
-		! Only the master node will write the file.
+	! Only the master node will write the file.
 		if (this_image() == 1) then 
 			
 			! Writes the file number based on nwrite.
@@ -647,20 +649,41 @@ contains
 
 	subroutine init_cake
 		implicit none
-		integer ::i,j,k
-		real :: v
+		integer ::i,j,k, seedSize, time
+                integer , allocatable :: seed(:)
+		real :: v, g(3)
+
 		npnode = ngrid**3
+
+	seedSize = -3
+	call random_seed(size = seedSize)
+        allocate(seed(seedSize))
+	
+	! Records the time, upon which the seed values for random number generation will be based.
+	call system_clock(time)
+	
+	! Allocates seed values for random number generation, multipled by this_image() to give a different seed for each processor.
+        seed(:) = time * this_image()
+        call random_seed(put = seed)
+
+
 	
 		do i=0,(ngrid-1)
 			do j=0,(ngrid-1)
 				do k=0,(ngrid-1)
-					xv(1,i + j*ngrid + k*ngrid**2 + 1) = (myCoord(1)-1)*ngrid + (i+0.5)
-					xv(2,i + j*ngrid + k*ngrid**2 + 1) = (myCoord(2)-1)*ngrid + (j+0.5)
-					xv(3,i + j*ngrid + k*ngrid**2 + 1) = (myCoord(3)-1)*ngrid + (k+0.5)
 
+ call random_number(g)
+ g = 0!g*0.25
+					xv(1,i + j*ngrid + k*ngrid**2 + 1) = (myCoord(1)-1)*ngrid + (i+0.5) + g(1)
+					xv(2,i + j*ngrid + k*ngrid**2 + 1) = (myCoord(2)-1)*ngrid + (j+0.5) + g(2)
+					xv(3,i + j*ngrid + k*ngrid**2 + 1) = (myCoord(3)-1)*ngrid + (k+0.5) + g(3)
+    
+     
 					!v = sin(2*3.141592/(ngrid*ncube)*((myCoord(1)+myCoord(2)+myCoord(3)-3)*ngrid + 1.5 + i + j + k))
 
-     v = 0.1*sin(2*3.141592/(ngrid*ncube)*xv(1,i + j*ngrid + k*ngrid**2 + 1))
+     v = 0.05*sin(2*3.141592/(ngrid*ncube)*xv(1,i + j*ngrid + k*ngrid**2 + 1))
+
+     
 
 					xv(4,i + j*ngrid + k*ngrid**2 + 1) = v
      xv(5:6,i + j*ngrid + k*ngrid**2 + 1) = 0
